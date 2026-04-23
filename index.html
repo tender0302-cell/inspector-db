@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>工程查核委員資料庫</title>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -168,6 +169,7 @@ a.ext:hover{text-decoration:underline}
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:12px">
+      <span id="db-status" style="font-size:11px;color:var(--text3)">連線中…</span>
       <span id="api-status" style="font-size:11px;color:var(--text3)"></span>
       <button class="btn btn-ghost btn-sm" onclick="nav(document.querySelector('[data-panel=settings]'))">⚙ 設定 API Key</button>
     </div>
@@ -387,9 +389,59 @@ a.ext:hover{text-decoration:underline}
 
 <script>
 // ─── DB ───────────────────────────────────────────────────────
-const DB_KEY = 'insp_db_v2';
-let DB = (() => { try { return JSON.parse(localStorage.getItem(DB_KEY)) || {records:[],inspectors:[],defects:[]}; } catch { return {records:[],inspectors:[],defects:[]}; } })();
-const save = () => localStorage.setItem(DB_KEY, JSON.stringify(DB));
+// ─── SUPABASE CONFIG ──────────────────────────────────────────
+const SB_URL = 'https://fxphezzatmbapcwxlthd.supabase.co';
+const SB_KEY = 'sb_publishable_-cgAH4K5VMkPwE6R1sChnw_sYUKBl0b';
+const sb = supabase.createClient(SB_URL, SB_KEY);
+
+// Local cache for fast UI rendering
+let DB = {records:[], inspectors:[], defects:[]};
+
+// Load all data from Supabase on startup
+async function loadFromSupabase() {
+  try {
+    const [r, i, d] = await Promise.all([
+      sb.from('records').select('*'),
+      sb.from('inspectors').select('*'),
+      sb.from('defects').select('*')
+    ]);
+    DB.records   = (r.data||[]).map(row => ({...row, scores: row.scores||{}}));
+    DB.inspectors= (i.data||[]).map(row => ({...row, records: row.records||[]}));
+    DB.defects   = (d.data||[]).map(row => ({...row, inspector_names: row.inspector_names||[], inspectorNames: row.inspector_names||[]}));
+    updateStats(); renderRecent();
+    document.getElementById('db-status').textContent = '✓ 已連線';
+    document.getElementById('db-status').style.color = 'var(--green)';
+  } catch(e) {
+    document.getElementById('db-status').textContent = '⚠ 資料庫連線失敗';
+    document.getElementById('db-status').style.color = 'var(--red)';
+  }
+}
+
+// Save helpers - write to Supabase
+async function saveRecord(rec) {
+  const {error} = await sb.from('records').upsert({
+    id: rec.id, project: rec.project, location: rec.location,
+    date: rec.date, authority: rec.authority, contractor: rec.contractor,
+    scores: rec.scores, file: rec.file, created_at: rec.createdAt
+  });
+  if (error) throw error;
+}
+async function saveInspectorRow(ins) {
+  const {error} = await sb.from('inspectors').upsert({
+    id: ins.id, name: ins.name, role: ins.role, title: ins.title,
+    expertise: ins.expertise, education: ins.education,
+    organization: ins.organization, note: ins.note, records: ins.records||[]
+  });
+  if (error) throw error;
+}
+async function saveDefectRow(d) {
+  const {error} = await sb.from('defects').upsert({
+    id: d.id, record_id: d.recordId, project: d.project, date: d.date,
+    code: d.code, content: d.content, inspector_names: d.inspectorNames||[]
+  });
+  if (error) throw error;
+}
+const save = () => {}; // no-op, replaced by per-entity saves
 
 // ─── NAV ──────────────────────────────────────────────────────
 function nav(el) {
@@ -447,7 +499,7 @@ async function testKey() {
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01'},
+      headers: {'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body: JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:10,messages:[{role:'user',content:'hi'}]})
     });
     if (r.ok) toast('✓ API Key 連線正常', 'ok');
@@ -493,7 +545,7 @@ async function handleFile(file) {
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01'},
+      headers: {'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 4096,
@@ -563,7 +615,18 @@ ${text.slice(0, 12000)}`
     DB.defects.push({ id:'d_'+Date.now()+'_'+Math.random().toString(36).slice(2,5), recordId:rid, project:parsed.project, date:parsed.date, code:d.code||'', content:d.content||'', inspectorNames:insNames });
   });
 
-  save();
+  // Save to Supabase
+  try {
+    await saveRecord(DB.records[DB.records.length-1]);
+    for (const ins of DB.inspectors) {
+      if ((ins.records||[]).find(r=>r.recordId===rid)) await saveInspectorRow(ins);
+    }
+    for (const d of DB.defects) {
+      if (d.recordId===rid) await saveDefectRow(d);
+    }
+  } catch(e) {
+    setStep('st4','err'); toast('儲存失敗：'+e.message,'err'); return;
+  }
   setStep('st4', 'done'); setProgress(100);
   updateStats(); renderRecent();
   toast(`✓ 完成！${(parsed.inspectors||[]).length} 位委員・${(parsed.defects||[]).length} 項缺點`, 'ok');
@@ -733,7 +796,7 @@ function editInspector(id) {
   `;
   document.getElementById('modal').style.display = 'flex';
 }
-function saveInspector(id) {
+async function saveInspector(id) {
   const ins = DB.inspectors.find(i=>i.id===id);
   if (!ins) return;
   ins.title = document.getElementById('e-title').value.trim();
@@ -741,10 +804,8 @@ function saveInspector(id) {
   ins.education = document.getElementById('e-edu').value.trim();
   ins.expertise = document.getElementById('e-exp').value.trim();
   ins.note = document.getElementById('e-note').value.trim();
-  save();
-  closeModal();
-  renderInspectors();
-  toast('委員資料已儲存', 'ok');
+  try { await saveInspectorRow(ins); } catch(e) { toast('儲存失敗：'+e.message,'err'); return; }
+  closeModal(); renderInspectors(); toast('委員資料已儲存', 'ok');
 }
 
 function openAddInspector() {
@@ -763,12 +824,14 @@ function openAddInspector() {
   `;
   document.getElementById('modal').style.display = 'flex';
 }
-function addInspector() {
+async function addInspector() {
   const name = document.getElementById('e-name').value.trim();
   if (!name) { toast('請填寫姓名', 'err'); return; }
   if (DB.inspectors.find(i=>i.name===name)) { toast('此姓名已存在', 'err'); return; }
-  DB.inspectors.push({ id:'i_'+Date.now(), name, role:'', title:document.getElementById('e-title').value.trim(), organization:document.getElementById('e-org').value.trim(), education:document.getElementById('e-edu').value.trim(), expertise:document.getElementById('e-exp').value.trim(), note:document.getElementById('e-note').value.trim(), records:[] });
-  save(); closeModal(); renderInspectors(); updateStats(); toast('委員已新增', 'ok');
+  const ins = { id:'i_'+Date.now(), name, role:'', title:document.getElementById('e-title').value.trim(), organization:document.getElementById('e-org').value.trim(), education:document.getElementById('e-edu').value.trim(), expertise:document.getElementById('e-exp').value.trim(), note:document.getElementById('e-note').value.trim(), records:[] };
+  DB.inspectors.push(ins);
+  try { await saveInspectorRow(ins); } catch(e) { toast('儲存失敗：'+e.message,'err'); return; }
+  closeModal(); renderInspectors(); updateStats(); toast('委員已新增', 'ok');
 }
 
 // ─── DEFECTS ──────────────────────────────────────────────────
@@ -861,25 +924,35 @@ function exportBackup() {
   a.click();
   toast('備份已下載', 'ok');
 }
-function restoreBackup(input) {
+async function restoreBackup(input) {
   const file = input.files[0]; if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     try {
       const data = JSON.parse(e.target.result);
-      if (!data.records || !data.inspectors || !data.defects) throw new Error('格式不正確');
-      if (!confirm(`還原備份將覆蓋現有所有資料（${DB.records.length} 筆紀錄），確認還原？`)) return;
-      DB = data; save(); updateStats();
+      if (!data.records||!data.inspectors||!data.defects) throw new Error('格式不正確');
+      if (!confirm(`還原備份將覆蓋所有資料（${DB.records.length} 筆），確認？`)) return;
+      toast('還原中…','info');
+      await sb.from('defects').delete().neq('id','__none__');
+      await sb.from('inspectors').delete().neq('id','__none__');
+      await sb.from('records').delete().neq('id','__none__');
+      for (const r of data.records) await saveRecord(r);
+      for (const i of data.inspectors) await saveInspectorRow(i);
+      for (const d of data.defects) await saveDefectRow(d);
+      DB = data; updateStats();
       toast(`還原完成：${data.records.length} 筆查核紀錄`, 'ok');
-    } catch(e) { toast('還原失敗：' + e.message, 'err'); }
-    input.value = '';
+    } catch(e) { toast('還原失敗：'+e.message,'err'); }
+    input.value='';
   };
   reader.readAsText(file);
 }
-function clearAll() {
+async function clearAll() {
   if (!confirm('確認清除所有資料？此操作無法復原。')) return;
+  await sb.from('defects').delete().neq('id','__none__');
+  await sb.from('inspectors').delete().neq('id','__none__');
+  await sb.from('records').delete().neq('id','__none__');
   DB = {records:[], inspectors:[], defects:[]};
-  save(); updateStats(); toast('已清除所有資料', 'info');
+  updateStats(); toast('已清除所有資料', 'info');
 }
 
 // ─── EXPORT CSV ───────────────────────────────────────────────
@@ -928,9 +1001,8 @@ function toast(msg, type='info') {
 }
 
 // ─── INIT ─────────────────────────────────────────────────────
-updateStats();
-renderRecent();
 loadKeyUI();
+loadFromSupabase();
 </script>
 </body>
 </html>
