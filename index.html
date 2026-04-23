@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工程查核委員資料庫</title>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f0f0e;--bg2:#161614;--bg3:#1e1e1b;--bg4:#252521;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e8e6df;--text2:#9b9890;--text3:#5c5a54;
+  --gold:#c8a96e;--gold2:#a08850;--gold-dim:rgba(200,169,110,0.13);
+  --red:#e05a4e;--red-dim:rgba(224,90,78,0.12);
+  --blue:#5b8fd4;--blue-dim:rgba(91,143,212,0.12);
+  --green:#6aaa7a;--green-dim:rgba(106,170,122,0.12);
+  --amber:#d4944a;--amber-dim:rgba(212,148,74,0.12);
+  --r:8px;--rl:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Noto Sans TC',sans-serif;font-size:14px;line-height:1.6}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px}
+.app{display:grid;grid-template-columns:220px 1fr;grid-template-rows:54px 1fr;height:100vh;overflow:hidden}
+.topbar{grid-column:1/-1;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;justify-content:space-between;z-index:10}
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:14px 10px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+.main{overflow-y:auto;padding:28px 32px;background:var(--bg)}
+.brand{display:flex;align-items:center;gap:11px}
+.brand-mark{width:30px;height:30px;background:var(--gold);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#0f0f0e;font-family:'JetBrains Mono',monospace;flex-shrink:0}
+.brand-name{font-size:14px;font-weight:500}
+.brand-sub{font-size:11px;color:var(--text3);margin-top:1px}
+.nav-label{font-size:10px;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;padding:10px 8px 5px;margin-top:6px;display:block}
+.nav-label:first-child{margin-top:0}
+.nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r);cursor:pointer;color:var(--text2);font-size:13px;transition:.15s;border:1px solid transparent;user-select:none}
+.nav-item:hover{background:var(--bg3);color:var(--text)}
+.nav-item.active{background:var(--gold-dim);border-color:rgba(200,169,110,0.18);color:var(--gold)}
+.nav-ico{font-size:15px;width:18px;text-align:center;flex-shrink:0}
+.nav-badge{margin-left:auto;font-size:10px;background:var(--bg4);padding:1px 7px;border-radius:10px;color:var(--text3);font-family:'JetBrains Mono',monospace}
+.nav-item.active .nav-badge{background:rgba(200,169,110,0.2);color:var(--gold2)}
+.panel{display:none}.panel.active{display:block}
+.ph{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px;gap:16px}
+.ph-title{font-size:18px;font-weight:500}
+.ph-sub{font-size:12px;color:var(--text3);margin-top:3px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:26px}
+.stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:16px 18px}
+.stat-n{font-size:28px;font-weight:300;color:var(--gold);line-height:1;font-family:'JetBrains Mono',monospace}
+.stat-l{font-size:11px;color:var(--text3);margin-top:5px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 15px;border-radius:var(--r);font-size:12px;cursor:pointer;font-family:'Noto Sans TC',sans-serif;transition:.15s;border:1px solid;white-space:nowrap}
+.btn-gold{background:var(--gold);color:#0f0f0e;border-color:var(--gold);font-weight:600}
+.btn-gold:hover{background:var(--gold2)}
+.btn-ghost{background:transparent;color:var(--text2);border-color:var(--border2)}
+.btn-ghost:hover{background:var(--bg3);color:var(--text)}
+.btn-red{background:transparent;color:var(--red);border-color:rgba(224,90,78,0.3)}
+.btn-red:hover{background:var(--red-dim)}
+.btn-sm{padding:4px 10px;font-size:11px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.upload-zone{border:1.5px dashed var(--border2);border-radius:var(--rl);padding:44px 32px;text-align:center;transition:.2s;background:var(--bg2);position:relative;cursor:pointer}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--gold);background:var(--gold-dim)}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-ico{font-size:32px;margin-bottom:10px;opacity:.5}
+.upload-title{font-size:15px;font-weight:500;margin-bottom:5px}
+.upload-sub{font-size:12px;color:var(--text3)}
+.progress-bar{height:4px;background:var(--bg4);border-radius:2px;overflow:hidden;margin-top:14px}
+.progress-fill{height:100%;background:var(--gold);border-radius:2px;transition:width .3s;width:0%}
+.status-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:16px 18px;margin-top:14px;font-size:13px;display:none}
+.status-step{display:flex;align-items:center;gap:10px;padding:6px 0;color:var(--text3)}
+.status-step.done{color:var(--green)}
+.status-step.active{color:var(--gold)}
+.status-step.err{color:var(--red)}
+.step-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0}
+.tag{display:inline-flex;align-items:center;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:500;white-space:nowrap;border:1px solid}
+.tag-gold{background:var(--gold-dim);color:var(--gold);border-color:rgba(200,169,110,0.2)}
+.tag-red{background:var(--red-dim);color:var(--red);border-color:rgba(224,90,78,0.2)}
+.tag-blue{background:var(--blue-dim);color:var(--blue);border-color:rgba(91,143,212,0.2)}
+.tag-green{background:var(--green-dim);color:var(--green);border-color:rgba(106,170,122,0.2)}
+.tag-amber{background:var(--amber-dim);color:var(--amber);border-color:rgba(212,148,74,0.2)}
+.tag-gray{background:var(--bg4);color:var(--text2);border-color:var(--border2)}
+.fbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.fbar select,.fbar input[type=text]{height:34px;padding:0 10px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);color:var(--text);font-size:12px;font-family:'Noto Sans TC',sans-serif;outline:none;transition:.15s;min-width:120px}
+.fbar select:focus,.fbar input:focus{border-color:var(--gold)}
+.fsep{width:1px;height:22px;background:var(--border2)}
+.icard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-bottom:10px;transition:.15s}
+.icard:hover{border-color:var(--border2)}
+.icard-head{padding:14px 18px;display:flex;align-items:center;gap:13px;cursor:pointer;user-select:none}
+.avatar{width:40px;height:40px;border-radius:50%;background:var(--gold-dim);border:1px solid rgba(200,169,110,0.25);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--gold);flex-shrink:0;font-family:'JetBrains Mono',monospace}
+.iname{font-size:14px;font-weight:500}
+.imeta{font-size:11px;color:var(--text3);margin-top:2px}
+.icard-body{padding:16px 18px;border-top:1px solid var(--border);display:none}
+.icard.open .icard-body{display:block}
+.itabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:14px}
+.itab{padding:7px 14px;font-size:12px;cursor:pointer;color:var(--text3);border-bottom:2px solid transparent;margin-bottom:-1px;transition:.15s;user-select:none}
+.itab.active{color:var(--gold);border-bottom-color:var(--gold)}
+.itab-panel{display:none}.itab-panel.active{display:block}
+.info-grid{display:grid;grid-template-columns:90px 1fr;gap:5px 14px;font-size:12px;margin-bottom:10px}
+.info-k{color:var(--text3);align-self:start;padding-top:2px}
+.info-v{color:var(--text)}
+.tbl-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{padding:10px 13px;text-align:left;font-size:10px;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--bg3);font-weight:500;white-space:nowrap}
+td{padding:10px 13px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,0.015)}
+.mono{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3)}
+.pcard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:18px 20px;margin-bottom:12px}
+.pcard-name{font-size:14px;font-weight:500;line-height:1.4}
+.pcard-meta{font-size:11px;color:var(--text3);margin-top:3px}
+.pstats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.pstat{background:var(--bg3);border-radius:var(--r);padding:8px 12px}
+.pstat-n{font-size:20px;font-weight:300;font-family:'JetBrains Mono',monospace;color:var(--gold)}
+.pstat-l{font-size:10px;color:var(--text3);margin-top:2px}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:500px;max-height:85vh;overflow-y:auto}
+.modal-head{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg2);z-index:1}
+.modal-title{font-size:15px;font-weight:500}
+.modal-x{background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer;line-height:1;padding:0}
+.modal-body{padding:22px}
+.modal-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.frow{margin-bottom:14px}
+.flabel{font-size:11px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase;display:block;margin-bottom:5px}
+.finput,.ftextarea,.fselect{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);color:var(--text);font-size:13px;padding:8px 12px;font-family:'Noto Sans TC',sans-serif;outline:none;transition:.15s}
+.finput:focus,.ftextarea:focus,.fselect:focus{border-color:var(--gold)}
+.ftextarea{resize:vertical;min-height:75px;line-height:1.6}
+.fselect{height:38px;cursor:pointer}
+.toasts{position:fixed;bottom:22px;right:22px;z-index:200;display:flex;flex-direction:column;gap:7px;pointer-events:none}
+.toast{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rl);padding:11px 16px;font-size:12px;min-width:180px;animation:tin .2s ease}
+.toast.ok{border-left:3px solid var(--green);color:var(--green)}
+.toast.err{border-left:3px solid var(--red);color:var(--red)}
+.toast.info{border-left:3px solid var(--gold);color:var(--gold)}
+@keyframes tin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.empty{text-align:center;padding:44px;color:var(--text3);font-size:13px}
+.cfg-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:18px 20px;margin-bottom:14px}
+.cfg-title{font-size:13px;font-weight:500;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.cfg-ok{font-size:11px;color:var(--green);margin-left:auto}
+.cfg-err{font-size:11px;color:var(--red);margin-left:auto}
+.hstep{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
+.hstep:last-child{border-bottom:none}
+.hstep-num{width:22px;height:22px;border-radius:50%;background:var(--gold-dim);border:1px solid rgba(200,169,110,0.25);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--gold);flex-shrink:0;font-family:'JetBrains Mono',monospace;margin-top:3px}
+.hstep-title{font-size:12px;font-weight:500;margin-bottom:2px}
+.hstep-desc{font-size:11px;color:var(--text3);line-height:1.7}
+a.ext{color:var(--blue);text-decoration:none}
+a.ext:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="toasts" id="toasts"></div>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modal" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="modal-title"></div>
+      <button class="modal-x" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<div class="app">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">查</div>
+      <div>
+        <div class="brand-name">工程查核委員資料庫</div>
+        <div class="brand-sub">承攬工程歷史查核紀錄管理系統</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="api-status" style="font-size:11px;color:var(--text3)"></span>
+      <button class="btn btn-ghost btn-sm" onclick="nav(document.querySelector('[data-panel=settings]'))">⚙ 設定 API Key</button>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <span class="nav-label">主功能</span>
+    <div class="nav-item active" data-panel="upload" onclick="nav(this)">
+      <span class="nav-ico">⬆</span>上傳查核紀錄
+    </div>
+    <div class="nav-item" data-panel="inspectors" onclick="nav(this)">
+      <span class="nav-ico">👤</span>委員查詢
+      <span class="nav-badge" id="nb-ins">0</span>
+    </div>
+    <div class="nav-item" data-panel="defects" onclick="nav(this)">
+      <span class="nav-ico">⚠</span>缺點彙整
+      <span class="nav-badge" id="nb-def">0</span>
+    </div>
+    <div class="nav-item" data-panel="projects" onclick="nav(this)">
+      <span class="nav-ico">🏗</span>案場總表
+      <span class="nav-badge" id="nb-pro">0</span>
+    </div>
+    <span class="nav-label">系統</span>
+    <div class="nav-item" data-panel="settings" onclick="nav(this)">
+      <span class="nav-ico">⚙</span>設定
+    </div>
+    <div class="nav-item" data-panel="backup" onclick="nav(this)">
+      <span class="nav-ico">💾</span>備份還原
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- ===== UPLOAD ===== -->
+    <div id="panel-upload" class="panel active">
+      <div class="ph">
+        <div>
+          <div class="ph-title">上傳查核紀錄</div>
+          <div class="ph-sub">上傳 .odt 或 .docx 檔案，AI 自動解析委員姓名與缺點，存入資料庫</div>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="stat-n" id="s0">0</div><div class="stat-l">查核紀錄總筆</div></div>
+        <div class="stat"><div class="stat-n" id="s1">0</div><div class="stat-l">委員人數</div></div>
+        <div class="stat"><div class="stat-n" id="s2">0</div><div class="stat-l">案場數</div></div>
+        <div class="stat"><div class="stat-n" id="s3">0</div><div class="stat-l">累計缺點筆數</div></div>
+      </div>
+
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept=".docx,.odt,.txt" onchange="handleFile(this.files[0])">
+        <div class="upload-ico">📄</div>
+        <div class="upload-title">拖曳或點擊上傳查核紀錄</div>
+        <div class="upload-sub">支援 .docx、.odt 格式 ── AI 自動解析，免手動操作</div>
+        <div style="margin-top:14px;display:flex;gap:6px;justify-content:center">
+          <span class="tag tag-gray">.docx</span>
+          <span class="tag tag-gray">.odt</span>
+        </div>
+        <div class="progress-bar" id="prog-bar" style="display:none"><div class="progress-fill" id="prog-fill"></div></div>
+      </div>
+
+      <div class="status-box" id="status-box">
+        <div class="status-step" id="st1"><div class="step-dot"></div>讀取文件內容</div>
+        <div class="status-step" id="st2"><div class="step-dot"></div>送出 AI 解析</div>
+        <div class="status-step" id="st3"><div class="step-dot"></div>解析委員與缺點資料</div>
+        <div class="status-step" id="st4"><div class="step-dot"></div>存入資料庫</div>
+      </div>
+
+      <!-- Recent uploads -->
+      <div id="recent-uploads" style="margin-top:22px"></div>
+    </div>
+
+    <!-- ===== INSPECTORS ===== -->
+    <div id="panel-inspectors" class="panel">
+      <div class="ph">
+        <div>
+          <div class="ph-title">委員查詢</div>
+          <div class="ph-sub">點選委員查看學經歷、專長與歷次查核開缺紀錄</div>
+        </div>
+        <button class="btn btn-ghost" onclick="openAddInspector()">＋ 手動新增委員</button>
+      </div>
+      <div class="fbar">
+        <input type="text" id="fi-name" placeholder="搜尋姓名…" oninput="renderInspectors()">
+        <select id="fi-project" onchange="renderInspectors()"><option value="">全部案場</option></select>
+        <select id="fi-year" onchange="renderInspectors()">
+          <option value="">全部年份</option>
+          <option value="1">近 1 年</option>
+          <option value="3">近 3 年</option>
+          <option value="5">近 5 年</option>
+        </select>
+      </div>
+      <div id="inspectors-list"></div>
+    </div>
+
+    <!-- ===== DEFECTS ===== -->
+    <div id="panel-defects" class="panel">
+      <div class="ph">
+        <div>
+          <div class="ph-title">缺點彙整</div>
+          <div class="ph-sub">跨案場、跨委員的缺點查詢與統計</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="exportCSV()">↓ 匯出 CSV</button>
+      </div>
+      <div class="fbar">
+        <select id="fd-project" onchange="renderDefects()"><option value="">全部案場</option></select>
+        <select id="fd-year" onchange="renderDefects()">
+          <option value="">全部年份</option>
+          <option value="1">近 1 年</option>
+          <option value="3">近 3 年</option>
+          <option value="5">近 5 年</option>
+        </select>
+        <select id="fd-cat" onchange="renderDefects()">
+          <option value="">全部類別</option>
+          <option value="4.">品管文件 (4.xx)</option>
+          <option value="5.01">施工品質</option>
+          <option value="5.03">模板工程</option>
+          <option value="5.07">水電管路</option>
+          <option value="5.08">結構打鑿</option>
+          <option value="5.10">材料檢驗</option>
+          <option value="5.14">安全衛生</option>
+          <option value="5.16">汛期防災</option>
+        </select>
+        <select id="fd-inspector" onchange="renderDefects()"><option value="">全部委員</option></select>
+        <input type="text" id="fd-kw" placeholder="關鍵字…" oninput="renderDefects()" style="min-width:140px">
+      </div>
+      <div id="def-count" style="font-size:11px;color:var(--text3);margin-bottom:10px"></div>
+      <div id="defects-table"></div>
+    </div>
+
+    <!-- ===== PROJECTS ===== -->
+    <div id="panel-projects" class="panel">
+      <div class="ph">
+        <div>
+          <div class="ph-title">案場總表</div>
+          <div class="ph-sub">各案場查核統計與委員名單</div>
+        </div>
+      </div>
+      <div id="projects-list"></div>
+    </div>
+
+    <!-- ===== SETTINGS ===== -->
+    <div id="panel-settings" class="panel">
+      <div class="ph">
+        <div>
+          <div class="ph-title">系統設定</div>
+          <div class="ph-sub">填入 Claude API Key 後即可全自動解析查核紀錄</div>
+        </div>
+      </div>
+
+      <div class="cfg-box">
+        <div class="cfg-title">
+          🔑 Claude API Key
+          <span id="key-status" class="cfg-err" style="display:none"></span>
+        </div>
+        <div class="hstep">
+          <div class="hstep-num">1</div>
+          <div><div class="hstep-title">申請 API Key（免費額度可用）</div>
+          <div class="hstep-desc">前往 <a class="ext" href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → 登入或註冊 → 點「API Keys」→「Create Key」</div></div>
+        </div>
+        <div class="hstep">
+          <div class="hstep-num">2</div>
+          <div><div class="hstep-title">複製 Key 貼入下方</div>
+          <div class="hstep-desc">Key 儲存在您的瀏覽器本機，不會上傳到任何地方。每份查核紀錄解析費用約 NT$1–3 元。</div></div>
+        </div>
+        <div class="frow" style="margin-top:14px">
+          <label class="flabel">Anthropic API Key</label>
+          <input class="finput" id="cfg-key" type="password" placeholder="sk-ant-api03-…">
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-gold" onclick="saveKey()">儲存 Key</button>
+          <button class="btn btn-ghost" onclick="testKey()">測試連線</button>
+          <button class="btn btn-red btn-sm" onclick="clearKey()">清除</button>
+        </div>
+      </div>
+
+      <div class="cfg-box">
+        <div class="cfg-title">ℹ 費用說明</div>
+        <div style="font-size:12px;color:var(--text3);line-height:1.8">
+          · 每份查核紀錄約 2,000–5,000 字，解析費用約 <strong style="color:var(--text)">NT$1–3 元</strong><br>
+          · Anthropic 新帳號有免費額度（約 $5 USD），可解析約 50–100 份紀錄<br>
+          · 之後按用量計費，一年查核紀錄若有 20 份，全年費用約 NT$40–60 元<br>
+          · 委員學經歷搜尋請在 Claude.ai 對話視窗操作後複製填入，不消耗 API 費用
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== BACKUP ===== -->
+    <div id="panel-backup" class="panel">
+      <div class="ph">
+        <div>
+          <div class="ph-title">備份與還原</div>
+          <div class="ph-sub">定期備份，避免瀏覽器清除 localStorage 後資料遺失</div>
+        </div>
+      </div>
+      <div class="cfg-box">
+        <div class="cfg-title">📤 匯出備份</div>
+        <div class="hstep-desc" style="margin-bottom:14px;font-size:12px;color:var(--text3)">將所有資料匯出為 JSON 檔，建議每次匯入新查核紀錄後備份一次。</div>
+        <button class="btn btn-gold" onclick="exportBackup()">下載備份檔案</button>
+      </div>
+      <div class="cfg-box">
+        <div class="cfg-title">📥 還原備份</div>
+        <div class="hstep-desc" style="margin-bottom:14px;font-size:12px;color:var(--text3)">選擇備份 JSON 檔還原，<span style="color:var(--red)">將覆蓋現有資料</span>。</div>
+        <input type="file" id="restore-file" accept=".json" style="display:none" onchange="restoreBackup(this)">
+        <button class="btn btn-ghost" onclick="document.getElementById('restore-file').click()">選擇備份檔案並還原</button>
+      </div>
+      <div class="cfg-box">
+        <div class="cfg-title" style="color:var(--red)">⚠ 清除所有資料</div>
+        <div class="hstep-desc" style="margin-bottom:14px;font-size:12px;color:var(--text3)">清除瀏覽器中的所有查核紀錄、委員與缺點資料，此操作無法復原。</div>
+        <button class="btn btn-red" onclick="clearAll()">清除全部資料</button>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+// ─── DB ───────────────────────────────────────────────────────
+const DB_KEY = 'insp_db_v2';
+let DB = (() => { try { return JSON.parse(localStorage.getItem(DB_KEY)) || {records:[],inspectors:[],defects:[]}; } catch { return {records:[],inspectors:[],defects:[]}; } })();
+const save = () => localStorage.setItem(DB_KEY, JSON.stringify(DB));
+
+// ─── NAV ──────────────────────────────────────────────────────
+function nav(el) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  const p = document.getElementById('panel-' + el.dataset.panel);
+  if (p) p.classList.add('active');
+  const panel = el.dataset.panel;
+  if (panel === 'upload') { updateStats(); renderRecent(); }
+  if (panel === 'inspectors') { fillProjectSel('fi-project'); renderInspectors(); }
+  if (panel === 'defects') { fillProjectSel('fd-project'); fillInspSel('fd-inspector'); renderDefects(); }
+  if (panel === 'projects') renderProjects();
+  if (panel === 'settings') loadKeyUI();
+}
+
+// ─── STATS ────────────────────────────────────────────────────
+function updateStats() {
+  const projects = [...new Set(DB.records.map(r => r.project))];
+  const names = [...new Set(DB.inspectors.map(i => i.name))];
+  document.getElementById('s0').textContent = DB.records.length;
+  document.getElementById('s1').textContent = names.length;
+  document.getElementById('s2').textContent = projects.length;
+  document.getElementById('s3').textContent = DB.defects.length;
+  document.getElementById('nb-ins').textContent = names.length;
+  document.getElementById('nb-def').textContent = DB.defects.length;
+  document.getElementById('nb-pro').textContent = projects.length;
+}
+
+// ─── API KEY ──────────────────────────────────────────────────
+const KEY_K = 'claude_api_key';
+const getKey = () => localStorage.getItem(KEY_K) || '';
+function loadKeyUI() {
+  const k = getKey();
+  document.getElementById('cfg-key').value = k ? k.slice(0,12) + '…' : '';
+  document.getElementById('api-status').textContent = k ? '✓ API Key 已設定' : '⚠ 尚未設定 API Key';
+  document.getElementById('api-status').style.color = k ? 'var(--green)' : 'var(--amber)';
+}
+function saveKey() {
+  const v = document.getElementById('cfg-key').value.trim();
+  if (!v || v.includes('…')) { toast('請貼入完整的 API Key', 'err'); return; }
+  localStorage.setItem(KEY_K, v);
+  loadKeyUI();
+  toast('API Key 已儲存', 'ok');
+}
+function clearKey() {
+  localStorage.removeItem(KEY_K);
+  document.getElementById('cfg-key').value = '';
+  loadKeyUI();
+  toast('API Key 已清除', 'info');
+}
+async function testKey() {
+  const k = getKey();
+  if (!k) { toast('請先設定 API Key', 'err'); return; }
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01'},
+      body: JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:10,messages:[{role:'user',content:'hi'}]})
+    });
+    if (r.ok) toast('✓ API Key 連線正常', 'ok');
+    else { const e = await r.json(); toast('連線失敗：' + (e.error?.message||r.status), 'err'); }
+  } catch(e) { toast('連線失敗（網路錯誤）', 'err'); }
+}
+
+// ─── FILE UPLOAD ──────────────────────────────────────────────
+const zone = document.getElementById('upload-zone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag'); const f = e.dataTransfer.files[0]; if(f) handleFile(f); });
+
+async function handleFile(file) {
+  if (!file) return;
+  const k = getKey();
+  if (!k) { toast('請先到「設定」填入 Claude API Key', 'err'); nav(document.querySelector('[data-panel=settings]')); return; }
+
+  setStatus('visible');
+  setStep('st1', 'active');
+  setProgress(10);
+
+  let text = '';
+  try {
+    if (file.name.endsWith('.docx')) {
+      const ab = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({arrayBuffer: ab});
+      text = result.value;
+    } else if (file.name.endsWith('.odt') || file.name.endsWith('.txt')) {
+      text = await file.text();
+    } else {
+      toast('不支援的檔案格式', 'err'); setStatus('hidden'); return;
+    }
+    if (!text.trim()) { toast('無法讀取文件內容', 'err'); setStatus('hidden'); return; }
+  } catch(e) {
+    setStep('st1', 'err'); toast('讀取檔案失敗：' + e.message, 'err'); return;
+  }
+
+  setStep('st1', 'done'); setStep('st2', 'active'); setProgress(35);
+
+  // Call Claude API
+  let parsed;
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01'},
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: `請解析以下工程施工查核紀錄文字，輸出 JSON（只輸出 JSON，不要其他文字，不要 markdown 代碼框）：
+
+格式：
+{
+  "project": "標案名稱（完整）",
+  "location": "地點",
+  "date": "查核日期 YYYY-MM-DD（民國年換算：113年=2024年，112年=2023年）",
+  "authority": "主辦機關",
+  "contractor": "承包商名稱",
+  "inspectors": [{"name":"姓名","role":"外聘或內聘或領隊"}],
+  "scores": {"env":數字或null,"safety":數字或null,"strength":數字或null,"aesthetics":數字或null,"function":數字或null},
+  "defects": [{"code":"如4.01.01","content":"缺點完整內容（勿截斷）"}]
+}
+
+查核紀錄內容：
+${text.slice(0, 12000)}`
+        }]
+      })
+    });
+    if (!resp.ok) {
+      const e = await resp.json();
+      throw new Error(e.error?.message || resp.status);
+    }
+    const data = await resp.json();
+    const raw = data.content[0].text.trim().replace(/^```json?\s*/i,'').replace(/```\s*$/,'').trim();
+    parsed = JSON.parse(raw);
+  } catch(e) {
+    setStep('st2', 'err'); toast('AI 解析失敗：' + e.message, 'err'); return;
+  }
+
+  setStep('st2', 'done'); setStep('st3', 'active'); setProgress(65);
+
+  // Validate
+  if (!parsed.project || !parsed.date) {
+    setStep('st3', 'err'); toast('解析結果缺少必要欄位（標案名稱或日期）', 'err'); return;
+  }
+  // Duplicate check
+  if (DB.records.find(r => r.project === parsed.project && r.date === parsed.date)) {
+    setStep('st3', 'err'); toast('此案場同日期查核紀錄已存在', 'err'); return;
+  }
+
+  setStep('st3', 'done'); setStep('st4', 'active'); setProgress(85);
+
+  // Save to DB
+  const rid = 'r_' + Date.now();
+  DB.records.push({ id: rid, project: parsed.project, location: parsed.location||'', date: parsed.date, authority: parsed.authority||'', contractor: parsed.contractor||'', scores: parsed.scores||{}, file: file.name, createdAt: new Date().toISOString() });
+
+  (parsed.inspectors||[]).forEach(ins => {
+    if (!ins.name) return;
+    let ex = DB.inspectors.find(i => i.name === ins.name);
+    if (!ex) {
+      DB.inspectors.push({ id:'i_'+Date.now()+'_'+Math.random().toString(36).slice(2,5), name:ins.name, role:ins.role||'', title:'', expertise:'', education:'', organization:'', note:'', records:[{recordId:rid,project:parsed.project,date:parsed.date,role:ins.role||''}] });
+    } else {
+      if (!ex.records) ex.records = [];
+      if (!ex.records.find(r => r.recordId === rid))
+        ex.records.push({recordId:rid,project:parsed.project,date:parsed.date,role:ins.role||''});
+    }
+  });
+
+  const insNames = (parsed.inspectors||[]).filter(i=>i.role!=='領隊').map(i=>i.name);
+  (parsed.defects||[]).forEach(d => {
+    DB.defects.push({ id:'d_'+Date.now()+'_'+Math.random().toString(36).slice(2,5), recordId:rid, project:parsed.project, date:parsed.date, code:d.code||'', content:d.content||'', inspectorNames:insNames });
+  });
+
+  save();
+  setStep('st4', 'done'); setProgress(100);
+  updateStats(); renderRecent();
+  toast(`✓ 完成！${(parsed.inspectors||[]).length} 位委員・${(parsed.defects||[]).length} 項缺點`, 'ok');
+  document.getElementById('file-input').value = '';
+}
+
+function setStatus(v) {
+  const box = document.getElementById('status-box');
+  const bar = document.getElementById('prog-bar');
+  box.style.display = v==='visible' ? 'block' : 'none';
+  bar.style.display = v==='visible' ? 'block' : 'none';
+  if (v==='visible') { ['st1','st2','st3','st4'].forEach(s=>setStep(s,'')); setProgress(0); }
+}
+function setStep(id, state) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'status-step' + (state ? ' '+state : '');
+}
+function setProgress(pct) {
+  document.getElementById('prog-fill').style.width = pct + '%';
+}
+
+function renderRecent() {
+  const el = document.getElementById('recent-uploads');
+  const recent = [...DB.records].sort((a,b) => new Date(b.createdAt||0) - new Date(a.createdAt||0)).slice(0, 5);
+  if (!recent.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:10px;letter-spacing:.04em;text-transform:uppercase">最近匯入</div>
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden">
+  <table><thead><tr><th>標案名稱</th><th>查核日期</th><th>委員</th><th>缺點數</th></tr></thead><tbody>
+  ${recent.map(r => {
+    const ins = DB.inspectors.filter(i => (i.records||[]).find(rc=>rc.recordId===r.id)).map(i=>i.name);
+    const defs = DB.defects.filter(d=>d.recordId===r.id).length;
+    return `<tr><td>${r.project}</td><td>${r.date}</td><td>${ins.slice(0,3).join('、')}${ins.length>3?'…':''}</td><td><span class="tag tag-red">${defs}</span></td></tr>`;
+  }).join('')}
+  </tbody></table></div>`;
+}
+
+// ─── INSPECTORS ───────────────────────────────────────────────
+function fillProjectSel(id) {
+  const sel = document.getElementById(id);
+  const cur = sel.value;
+  const projs = [...new Set(DB.records.map(r=>r.project))].sort();
+  sel.innerHTML = '<option value="">全部案場</option>' + projs.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${p}</option>`).join('');
+}
+function fillInspSel(id) {
+  const sel = document.getElementById(id);
+  const cur = sel.value;
+  const names = [...new Set(DB.inspectors.map(i=>i.name))].sort();
+  sel.innerHTML = '<option value="">全部委員</option>' + names.map(n=>`<option value="${esc(n)}" ${n===cur?'selected':''}>${n}</option>`).join('');
+}
+
+function renderInspectors() {
+  const name = document.getElementById('fi-name').value.trim().toLowerCase();
+  const proj = document.getElementById('fi-project').value;
+  const yr = parseInt(document.getElementById('fi-year').value) || 0;
+  const now = new Date();
+
+  let list = DB.inspectors.filter(ins => {
+    if (name && !ins.name.toLowerCase().includes(name)) return false;
+    if (proj && !(ins.records||[]).some(r=>r.project===proj)) return false;
+    if (yr && !(ins.records||[]).some(r => (now-new Date(r.date))/(365.25*864e5) <= yr)) return false;
+    return true;
+  }).sort((a,b) => {
+    const ad = Math.max(0,...(a.records||[]).map(r=>+new Date(r.date)));
+    const bd = Math.max(0,...(b.records||[]).map(r=>+new Date(r.date)));
+    return bd - ad;
+  });
+
+  const el = document.getElementById('inspectors-list');
+  if (!list.length) { el.innerHTML = '<div class="empty">找不到符合的委員</div>'; return; }
+
+  el.innerHTML = list.map(ins => {
+    const recs = [...(ins.records||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const myDefs = DB.defects.filter(d=>d.inspectorNames&&d.inspectorNames.includes(ins.name));
+    const cats = {};
+    myDefs.forEach(d => { const c=catLabel(d.code); cats[c]=(cats[c]||0)+1; });
+    const catTags = Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,4)
+      .map(([k,v])=>`<span class="tag tag-amber" style="font-size:10px">${k}(${v})</span>`).join(' ');
+    const latestDate = recs[0]?.date || '-';
+    const projs = [...new Set(recs.map(r=>r.project))];
+
+    return `<div class="icard" id="ic-${ins.id}">
+      <div class="icard-head" onclick="toggleCard('${ins.id}')">
+        <div class="avatar">${ins.name.slice(0,1)}</div>
+        <div style="flex:1;min-width:0">
+          <div class="iname">${ins.name}</div>
+          <div class="imeta">查核 ${recs.length} 次・累計開缺 ${myDefs.length} 項・最近：${latestDate}</div>
+        </div>
+        <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;max-width:320px;justify-content:flex-end">
+          ${catTags}
+          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();editInspector('${ins.id}')">編輯資料</button>
+        </div>
+      </div>
+      <div class="icard-body" id="icb-${ins.id}">
+        <div class="itabs">
+          <div class="itab active" onclick="switchItab('${ins.id}','profile',this)">基本資料</div>
+          <div class="itab" onclick="switchItab('${ins.id}','history',this)">查核歷史</div>
+          <div class="itab" onclick="switchItab('${ins.id}','defects',this)">開缺紀錄</div>
+        </div>
+        <!-- profile -->
+        <div class="itab-panel active" id="itp-${ins.id}-profile">
+          <div class="info-grid">
+            <span class="info-k">職稱／單位</span><span class="info-v">${ins.title||dim('未填寫')}</span>
+            <span class="info-k">所屬機構</span><span class="info-v">${ins.organization||dim('未填寫')}</span>
+            <span class="info-k">學歷</span><span class="info-v">${ins.education||dim('未填寫')}</span>
+            <span class="info-k">專長領域</span><span class="info-v">${ins.expertise||dim('未填寫')}</span>
+            <span class="info-k">查核身分</span><span class="info-v">${ins.role||dim('-')}</span>
+            <span class="info-k">備註</span><span class="info-v">${ins.note||dim('-')}</span>
+          </div>
+          <div style="margin-top:8px;padding:10px 12px;background:var(--bg3);border-radius:var(--r);font-size:11px;color:var(--text3);line-height:1.8">
+            💡 學經歷查詢建議：在 Claude 對話貼上「請搜尋委員 <strong style="color:var(--text)">${ins.name}</strong> 的學歷、現職與專長，他是工程施工查核委員」，取得資料後點「編輯資料」填入。
+          </div>
+        </div>
+        <!-- history -->
+        <div class="itab-panel" id="itp-${ins.id}-history">
+          ${recs.length ? `<div class="tbl-wrap"><table>
+            <thead><tr><th>查核日期</th><th>案場名稱</th><th>身分</th><th>開缺數</th></tr></thead>
+            <tbody>${recs.map(r => {
+              const cnt = DB.defects.filter(d=>d.recordId===r.recordId&&d.inspectorNames&&d.inspectorNames.includes(ins.name)).length;
+              return `<tr><td>${r.date}</td><td>${r.project}</td><td><span class="tag tag-gray" style="font-size:10px">${r.role||'-'}</span></td><td><span class="tag tag-red" style="font-size:10px">${cnt}</span></td></tr>`;
+            }).join('')}</tbody>
+          </table></div>` : '<div class="empty">無查核紀錄</div>'}
+        </div>
+        <!-- defects -->
+        <div class="itab-panel" id="itp-${ins.id}-defects">
+          ${myDefs.length ? `<div class="tbl-wrap"><table>
+            <thead><tr><th>日期</th><th>代碼</th><th>缺點內容</th><th>案場</th></tr></thead>
+            <tbody>${myDefs.map(d=>`<tr>
+              <td style="white-space:nowrap">${d.date}</td>
+              <td><span class="mono">${d.code}</span></td>
+              <td>${d.content}</td>
+              <td style="white-space:nowrap;font-size:11px;color:var(--text3)">${d.project.slice(0,12)}…</td>
+            </tr>`).join('')}</tbody>
+          </table></div>` : '<div class="empty">此委員無開缺紀錄</div>'}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleCard(id) {
+  const card = document.getElementById('ic-'+id);
+  card.classList.toggle('open');
+}
+function switchItab(insId, tab, el) {
+  const body = document.getElementById('icb-'+insId);
+  body.querySelectorAll('.itab').forEach(t=>t.classList.remove('active'));
+  body.querySelectorAll('.itab-panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(`itp-${insId}-${tab}`).classList.add('active');
+}
+
+function editInspector(id) {
+  const ins = DB.inspectors.find(i=>i.id===id);
+  if (!ins) return;
+  document.getElementById('modal-title').textContent = '編輯委員資料：' + ins.name;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="frow"><label class="flabel">職稱／單位</label><input class="finput" id="e-title" value="${esc(ins.title||'')}"></div>
+    <div class="frow"><label class="flabel">所屬機構</label><input class="finput" id="e-org" value="${esc(ins.organization||'')}"></div>
+    <div class="frow"><label class="flabel">學歷</label><input class="finput" id="e-edu" value="${esc(ins.education||'')}"></div>
+    <div class="frow"><label class="flabel">專長領域</label><textarea class="ftextarea" id="e-exp">${ins.expertise||''}</textarea></div>
+    <div class="frow"><label class="flabel">備註</label><textarea class="ftextarea" id="e-note">${ins.note||''}</textarea></div>
+  `;
+  document.getElementById('modal-foot').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+    <button class="btn btn-gold" onclick="saveInspector('${id}')">儲存</button>
+  `;
+  document.getElementById('modal').style.display = 'flex';
+}
+function saveInspector(id) {
+  const ins = DB.inspectors.find(i=>i.id===id);
+  if (!ins) return;
+  ins.title = document.getElementById('e-title').value.trim();
+  ins.organization = document.getElementById('e-org').value.trim();
+  ins.education = document.getElementById('e-edu').value.trim();
+  ins.expertise = document.getElementById('e-exp').value.trim();
+  ins.note = document.getElementById('e-note').value.trim();
+  save();
+  closeModal();
+  renderInspectors();
+  toast('委員資料已儲存', 'ok');
+}
+
+function openAddInspector() {
+  document.getElementById('modal-title').textContent = '手動新增委員';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="frow"><label class="flabel">姓名 *</label><input class="finput" id="e-name" placeholder="姓名"></div>
+    <div class="frow"><label class="flabel">職稱／單位</label><input class="finput" id="e-title" placeholder="如：副教授、技術顧問"></div>
+    <div class="frow"><label class="flabel">所屬機構</label><input class="finput" id="e-org" placeholder="如：成功大學、工程顧問公司"></div>
+    <div class="frow"><label class="flabel">學歷</label><input class="finput" id="e-edu" placeholder="如：土木工程博士"></div>
+    <div class="frow"><label class="flabel">專長領域</label><textarea class="ftextarea" id="e-exp" placeholder="如：結構工程、品質管理、施工安全"></textarea></div>
+    <div class="frow"><label class="flabel">備註</label><textarea class="ftextarea" id="e-note"></textarea></div>
+  `;
+  document.getElementById('modal-foot').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+    <button class="btn btn-gold" onclick="addInspector()">新增</button>
+  `;
+  document.getElementById('modal').style.display = 'flex';
+}
+function addInspector() {
+  const name = document.getElementById('e-name').value.trim();
+  if (!name) { toast('請填寫姓名', 'err'); return; }
+  if (DB.inspectors.find(i=>i.name===name)) { toast('此姓名已存在', 'err'); return; }
+  DB.inspectors.push({ id:'i_'+Date.now(), name, role:'', title:document.getElementById('e-title').value.trim(), organization:document.getElementById('e-org').value.trim(), education:document.getElementById('e-edu').value.trim(), expertise:document.getElementById('e-exp').value.trim(), note:document.getElementById('e-note').value.trim(), records:[] });
+  save(); closeModal(); renderInspectors(); updateStats(); toast('委員已新增', 'ok');
+}
+
+// ─── DEFECTS ──────────────────────────────────────────────────
+function renderDefects() {
+  const proj = document.getElementById('fd-project').value;
+  const yr = parseInt(document.getElementById('fd-year').value) || 0;
+  const cat = document.getElementById('fd-cat').value;
+  const ins = document.getElementById('fd-inspector').value;
+  const kw = document.getElementById('fd-kw').value.trim().toLowerCase();
+  const now = new Date();
+
+  let list = DB.defects.filter(d => {
+    if (proj && d.project !== proj) return false;
+    if (yr && (now - new Date(d.date)) / (365.25*864e5) > yr) return false;
+    if (cat && !d.code.startsWith(cat)) return false;
+    if (ins && !(d.inspectorNames||[]).includes(ins)) return false;
+    if (kw && !d.content.toLowerCase().includes(kw) && !d.code.toLowerCase().includes(kw)) return false;
+    return true;
+  }).sort((a,b) => new Date(b.date) - new Date(a.date));
+
+  document.getElementById('def-count').textContent = `共 ${list.length} 筆缺點`;
+  const el = document.getElementById('defects-table');
+  if (!list.length) { el.innerHTML = '<div class="empty">找不到符合的缺點紀錄</div>'; return; }
+
+  el.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>日期</th><th>代碼</th><th>缺點內容</th><th>案場</th><th>查核委員</th><th>類別</th></tr></thead>
+    <tbody>${list.map(d=>`<tr>
+      <td style="white-space:nowrap;font-size:11px">${d.date}</td>
+      <td><span class="mono">${d.code}</span></td>
+      <td style="min-width:200px;line-height:1.5">${d.content}</td>
+      <td style="font-size:11px;color:var(--text3);max-width:120px">${d.project.slice(0,15)}${d.project.length>15?'…':''}</td>
+      <td style="font-size:11px">${(d.inspectorNames||[]).join('、')}</td>
+      <td><span class="tag ${catTagClass(d.code)}" style="font-size:10px">${catLabel(d.code)}</span></td>
+    </tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+// ─── PROJECTS ─────────────────────────────────────────────────
+function renderProjects() {
+  const projs = [...new Set(DB.records.map(r=>r.project))];
+  const el = document.getElementById('projects-list');
+  if (!projs.length) { el.innerHTML = '<div class="empty">尚無案場資料</div>'; return; }
+
+  el.innerHTML = projs.map(proj => {
+    const recs = DB.records.filter(r=>r.project===proj).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const ins = [...new Set(DB.inspectors.filter(i=>(i.records||[]).some(r=>r.project===proj)).map(i=>i.name))];
+    const defs = DB.defects.filter(d=>d.project===proj);
+    const cats = {};
+    defs.forEach(d=>{ const c=catLabel(d.code); cats[c]=(cats[c]||0)+1; });
+    const rec = recs[0];
+
+    return `<div class="pcard">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px">
+        <div>
+          <div class="pcard-name">${proj}</div>
+          <div class="pcard-meta">${rec.location||''} ${rec.location&&rec.authority?'・':''} ${rec.authority||''} ${rec.contractor?'・承包：'+rec.contractor:''}</div>
+        </div>
+        <span class="tag tag-green" style="flex-shrink:0">進行中</span>
+      </div>
+      <div class="pstats">
+        <div class="pstat"><div class="pstat-n">${recs.length}</div><div class="pstat-l">查核次數</div></div>
+        <div class="pstat"><div class="pstat-n">${ins.length}</div><div class="pstat-l">查核委員數</div></div>
+        <div class="pstat"><div class="pstat-n">${defs.length}</div><div class="pstat-l">累計缺點</div></div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:5px;letter-spacing:.04em;text-transform:uppercase">歷次查核委員</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">${ins.map(n=>`<span class="tag tag-gold">${n}</span>`).join('')}</div>
+      </div>
+      ${Object.keys(cats).length ? `<div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:5px;letter-spacing:.04em;text-transform:uppercase">缺點類別分布</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">${Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="tag tag-red" style="font-size:10px">${k}：${v}項</span>`).join('')}</div>
+      </div>` : ''}
+      <div style="margin-top:10px">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:4px">查核紀錄（${recs.length} 次）</div>
+        ${recs.map(r=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--border)">
+          <span style="color:var(--text2)">${r.date}</span>
+          <span style="color:var(--text3)">${DB.defects.filter(d=>d.recordId===r.id).length} 項缺點</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── BACKUP ───────────────────────────────────────────────────
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(DB, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `查核委員資料庫備份_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  toast('備份已下載', 'ok');
+}
+function restoreBackup(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.records || !data.inspectors || !data.defects) throw new Error('格式不正確');
+      if (!confirm(`還原備份將覆蓋現有所有資料（${DB.records.length} 筆紀錄），確認還原？`)) return;
+      DB = data; save(); updateStats();
+      toast(`還原完成：${data.records.length} 筆查核紀錄`, 'ok');
+    } catch(e) { toast('還原失敗：' + e.message, 'err'); }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+function clearAll() {
+  if (!confirm('確認清除所有資料？此操作無法復原。')) return;
+  DB = {records:[], inspectors:[], defects:[]};
+  save(); updateStats(); toast('已清除所有資料', 'info');
+}
+
+// ─── EXPORT CSV ───────────────────────────────────────────────
+function exportCSV() {
+  const rows = [['日期','代碼','缺點內容','案場','委員','類別']];
+  DB.defects.forEach(d => rows.push([d.date, d.code, `"${d.content.replace(/"/g,'""')}"`, d.project, (d.inspectorNames||[]).join('・'), catLabel(d.code)]));
+  const csv = '\uFEFF' + rows.map(r=>r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download = `缺點彙整_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast('CSV 已下載', 'ok');
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────
+function catLabel(code) {
+  if (!code) return '其他';
+  if (code.startsWith('4.')) return '品管文件';
+  if (code.startsWith('5.01')) return '施工品質';
+  if (code.startsWith('5.03')) return '模板工程';
+  if (code.startsWith('5.07')) return '水電管路';
+  if (code.startsWith('5.08')) return '結構';
+  if (code.startsWith('5.09')) return '標示';
+  if (code.startsWith('5.10')) return '材料檢驗';
+  if (code.startsWith('5.14')) return '安全衛生';
+  if (code.startsWith('5.16')) return '汛期防災';
+  return '其他';
+}
+function catTagClass(code) {
+  if (!code) return 'tag-gray';
+  if (code.startsWith('4.')) return 'tag-blue';
+  if (code.startsWith('5.14')||code.startsWith('5.16')) return 'tag-red';
+  if (code.startsWith('5.01')||code.startsWith('5.03')) return 'tag-amber';
+  return 'tag-gray';
+}
+function dim(t) { return `<span style="color:var(--text3)">${t}</span>`; }
+function esc(s) { return String(s).replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function closeModal() { document.getElementById('modal').style.display = 'none'; }
+
+function toast(msg, type='info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────
+updateStats();
+renderRecent();
+loadKeyUI();
+</script>
+</body>
+</html>
