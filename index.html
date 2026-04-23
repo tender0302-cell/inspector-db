@@ -1116,14 +1116,18 @@ function renderProjects() {
     const cats = {};
     defs.forEach(d=>{ const c=catLabel(d.code); cats[c]=(cats[c]||0)+1; });
     const rec = recs[0];
+    const projEnc = encodeURIComponent(proj);
 
     return `<div class="pcard">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px">
-        <div>
+        <div style="flex:1;min-width:0">
           <div class="pcard-name">${proj}</div>
           <div class="pcard-meta">${rec.location||''} ${rec.location&&rec.authority?'・':''} ${rec.authority||''} ${rec.contractor?'・承包：'+rec.contractor:''}</div>
         </div>
-        <span class="tag tag-green" style="flex-shrink:0">進行中</span>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+          <button class="btn btn-ghost btn-sm" onclick="editProject('${projEnc}')">✏ 修改名稱</button>
+          <span class="tag tag-green">進行中</span>
+        </div>
       </div>
       <div class="pstats">
         <div class="pstat"><div class="pstat-n">${recs.length}</div><div class="pstat-l">查核次數</div></div>
@@ -1147,6 +1151,62 @@ function renderProjects() {
       </div>
     </div>`;
   }).join('');
+}
+
+function editProject(projEnc) {
+  const oldName = decodeURIComponent(projEnc);
+  document.getElementById('modal-title').textContent = '修改工程名稱';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="frow">
+      <label class="flabel">目前名稱</label>
+      <div style="font-size:12px;color:var(--text3);padding:8px 10px;background:var(--bg3);border-radius:var(--r);line-height:1.6;margin-bottom:4px">${oldName}</div>
+    </div>
+    <div class="frow">
+      <label class="flabel">修改為</label>
+      <textarea class="ftextarea" id="new-proj-name" style="min-height:60px">${oldName}</textarea>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:-8px">修改後將同步更新所有相關查核紀錄、委員歷史與缺點紀錄。</div>
+  `;
+  document.getElementById('modal-foot').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+    <button class="btn btn-gold" onclick="saveProjectName('${projEnc}')">儲存</button>
+  `;
+  document.getElementById('modal').style.display = 'flex';
+}
+
+async function saveProjectName(projEnc) {
+  const oldName = decodeURIComponent(projEnc);
+  const newName = document.getElementById('new-proj-name').value.trim();
+  if (!newName) { toast('名稱不能為空', 'err'); return; }
+  if (newName === oldName) { closeModal(); return; }
+  if (DB.records.find(r=>r.project===newName)) {
+    if (!confirm('已存在相同名稱的案場，確認合併？')) return;
+  }
+
+  // Update all records
+  const affectedRecs = DB.records.filter(r=>r.project===oldName);
+  for (const r of affectedRecs) {
+    r.project = newName;
+    await saveRecord(r);
+  }
+
+  // Update all defects
+  const affectedDefs = DB.defects.filter(d=>d.project===oldName);
+  for (const d of affectedDefs) {
+    d.project = newName;
+    await saveDefectRow(d);
+  }
+
+  // Update inspector records references
+  const affectedIns = DB.inspectors.filter(i=>(i.records||[]).some(r=>r.project===oldName));
+  for (const ins of affectedIns) {
+    ins.records = ins.records.map(r=> r.project===oldName ? {...r, project:newName} : r);
+    await saveInspectorRow(ins);
+  }
+
+  closeModal();
+  renderProjects();
+  toast('工程名稱已更新，所有相關紀錄已同步', 'ok');
 }
 
 // ─── BACKUP ───────────────────────────────────────────────────
