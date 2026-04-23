@@ -625,6 +625,8 @@ async function handleFile(file) {
 重要規則：
 - inspectors 欄位【只填寫】「查核委員」或「督導委員」欄位的人名，role 填外聘／內聘／領隊
 - 【絕對不要】把監造人員、監造單位人員、承辦人員、承攬廠商人員、工作人員填入 inspectors
+- name 欄位【只填寫純姓名】，例如「陳炳森」，不要加職稱（副召集人、召集人、委員、教授、博士等都不要）
+- 若姓名旁有括號說明如（領隊）請將其轉為 role 欄位，name 只保留姓名
 - 缺點代碼格式為數字加小數點，如 4.01.01、5.03.02，若無代碼則填空字串
 - 分數若查核紀錄中沒有則填 null
 
@@ -738,18 +740,26 @@ function renderRecent() {
 
 async function deleteRecord(rid) {
   if (!confirm('確認刪除此筆查核紀錄？相關缺點也會一併刪除。')) return;
-  // Remove from DB
   DB.records = DB.records.filter(r=>r.id!==rid);
   DB.defects = DB.defects.filter(d=>d.recordId!==rid);
+  // Remove this record from each inspector, then auto-delete if no records left
+  const toDelete = [];
   DB.inspectors.forEach(ins => {
     ins.records = (ins.records||[]).filter(r=>r.recordId!==rid);
+    if (ins.records.length === 0) toDelete.push(ins.id);
   });
-  // Remove from Supabase
   await sb.from('defects').delete().eq('record_id', rid);
   await sb.from('records').delete().eq('id', rid);
-  // Update inspectors in Supabase
+  // Delete orphaned inspectors from Supabase
+  for (const id of toDelete) {
+    await sb.from('inspectors').delete().eq('id', id);
+  }
+  DB.inspectors = DB.inspectors.filter(i=>!toDelete.includes(i.id));
+  // Update remaining inspectors
   for (const ins of DB.inspectors) await saveInspectorRow(ins);
-  updateStats(); renderRecent(); toast('已刪除', 'info');
+  const removed = toDelete.length;
+  updateStats(); renderRecent();
+  toast(`已刪除${removed > 0 ? `，並移除 ${removed} 位無紀錄委員` : ''}`, 'info');
 }
 
 function editRecord(rid) {
@@ -831,19 +841,30 @@ async function saveRecordInspectors(rid) {
   const rec = DB.records.find(r=>r.id===rid); if (!rec) return;
   const checked = [...document.querySelectorAll('#ins-check-list input:checked')].map(el=>el.value);
 
-  // Update each inspector's records
+  const toDelete = [];
   for (const ins of DB.inspectors) {
     const wasLinked = (ins.records||[]).some(r=>r.recordId===rid);
     const shouldLink = checked.includes(ins.id);
     if (wasLinked && !shouldLink) {
       ins.records = ins.records.filter(r=>r.recordId!==rid);
-      await saveInspectorRow(ins);
+      // Auto-remove inspector if no records remain
+      if (ins.records.length === 0) {
+        toDelete.push(ins.id);
+      } else {
+        await saveInspectorRow(ins);
+      }
     } else if (!wasLinked && shouldLink) {
       if (!ins.records) ins.records = [];
       ins.records.push({recordId:rid, project:rec.project, date:rec.date, role:ins.role||''});
       await saveInspectorRow(ins);
     }
   }
+  // Delete orphaned inspectors
+  for (const id of toDelete) {
+    await sb.from('inspectors').delete().eq('id', id);
+  }
+  DB.inspectors = DB.inspectors.filter(i=>!toDelete.includes(i.id));
+
   // Update defect inspector names
   const newNames = DB.inspectors.filter(i=>checked.includes(i.id)&&i.role!=='領隊').map(i=>i.name);
   const recDefs = DB.defects.filter(d=>d.recordId===rid);
@@ -852,7 +873,10 @@ async function saveRecordInspectors(rid) {
     d.inspector_names = newNames;
     await saveDefectRow(d);
   }
-  closeModal(); renderRecent(); renderInspectors(); toast('委員已更新', 'ok');
+  closeModal(); renderRecent(); updateStats();
+  const msg = toDelete.length > 0 ? `委員已更新，並移除 ${toDelete.length} 位無紀錄委員` : '委員已更新';
+  toast(msg, 'ok');
+  if (document.getElementById('panel-inspectors').classList.contains('active')) renderInspectors();
 }
 
 // ─── INSPECTORS ───────────────────────────────────────────────
@@ -909,6 +933,7 @@ function renderInspectors() {
         <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;max-width:320px;justify-content:flex-end">
           ${catTags}
           <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();editInspector('${ins.id}')">編輯資料</button>
+          <button class="btn btn-red btn-sm" onclick="event.stopPropagation();deleteInspector('${ins.id}','${ins.name}')">刪除</button>
         </div>
       </div>
       <div class="icard-body" id="icb-${ins.id}">
@@ -997,6 +1022,24 @@ async function saveInspector(id) {
   ins.note = document.getElementById('e-note').value.trim();
   try { await saveInspectorRow(ins); } catch(e) { toast('儲存失敗：'+e.message,'err'); return; }
   closeModal(); renderInspectors(); toast('委員資料已儲存', 'ok');
+}
+
+async function deleteInspector(id, name) {
+  if (!confirm(`確認刪除委員「${name}」？\n此委員的查核歷史連結也會一併移除，但缺點紀錄會保留（委員欄位顯示為空）。`)) return;
+  // Remove from all defects
+  DB.defects.forEach(d => {
+    if ((d.inspectorNames||[]).includes(name)) {
+      d.inspectorNames = d.inspectorNames.filter(n=>n!==name);
+      d.inspector_names = d.inspectorNames;
+    }
+  });
+  // Update defects in Supabase
+  const affected = DB.defects.filter(d=>!(d.inspectorNames||[]).includes(name));
+  for (const d of DB.defects) await saveDefectRow(d);
+  // Remove inspector
+  DB.inspectors = DB.inspectors.filter(i=>i.id!==id);
+  await sb.from('inspectors').delete().eq('id', id);
+  updateStats(); renderInspectors(); toast(`已刪除委員「${name}」`, 'info');
 }
 
 function openAddInspector() {
