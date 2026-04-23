@@ -6,6 +6,7 @@
 <title>工程查核委員資料庫</title>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -528,7 +529,46 @@ async function handleFile(file) {
       const ab = await file.arrayBuffer();
       const result = await mammoth.extractRawText({arrayBuffer: ab});
       text = result.value;
-    } else if (file.name.endsWith('.odt') || file.name.endsWith('.txt')) {
+    } else if (file.name.endsWith('.odt')) {
+      // ODT is a ZIP containing content.xml
+      try {
+        const ab = await file.arrayBuffer();
+        const zip = await (async () => {
+          // Use DecompressionStream to read ZIP entries
+          const bytes = new Uint8Array(ab);
+          // Find content.xml inside the ODT zip manually
+          // Use JSZip if available, otherwise fall back to text extraction
+          if (window.JSZip) {
+            const z = await JSZip.loadAsync(ab);
+            const contentXml = await z.file('content.xml').async('string');
+            // Strip XML tags, decode entities
+            text = contentXml
+              .replace(/<text:line-break[^>]*\/>/gi, '\n')
+              .replace(/<text:p[^>]*>/gi, '\n')
+              .replace(/<text:h[^>]*>/gi, '\n')
+              .replace(/<table:table-cell[^>]*>/gi, '\t')
+              .replace(/<[^>]+>/g, '')
+              .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'")
+              .replace(/\n{3,}/g,'\n\n').trim();
+          } else {
+            // Fallback: try reading as text and extract readable content
+            const decoder = new TextDecoder('utf-8', {fatal: false});
+            const raw = decoder.decode(bytes);
+            // Try to find content.xml text sections
+            const match = raw.match(/content\.xml/);
+            if (match) {
+              // Extract text between XML tags roughly
+              text = raw.replace(/<[^>]+>/g,' ').replace(/\s{3,}/g,'\n').trim();
+            } else {
+              text = raw;
+            }
+          }
+        })();
+      } catch(e2) {
+        // Last resort: read as plain text
+        text = await file.text();
+      }
+    } else if (file.name.endsWith('.txt')) {
       text = await file.text();
     } else {
       toast('不支援的檔案格式', 'err'); setStatus('hidden'); return;
