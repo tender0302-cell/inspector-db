@@ -614,13 +614,19 @@ async function handleFile(file) {
 {
   "project": "標案名稱（完整）",
   "location": "地點",
-  "date": "查核日期 YYYY-MM-DD（民國年換算：113年=2024年，112年=2023年）",
+  "date": "查核日期 YYYY-MM-DD（民國年換算：113年=2024年，112年=2023年，111年=2022年）",
   "authority": "主辦機關",
   "contractor": "承包商名稱",
   "inspectors": [{"name":"姓名","role":"外聘或內聘或領隊"}],
   "scores": {"env":數字或null,"safety":數字或null,"strength":數字或null,"aesthetics":數字或null,"function":數字或null},
   "defects": [{"code":"如4.01.01","content":"缺點完整內容（勿截斷）"}]
 }
+
+重要規則：
+- inspectors 欄位【只填寫】「查核委員」或「督導委員」欄位的人名，role 填外聘／內聘／領隊
+- 【絕對不要】把監造人員、監造單位人員、承辦人員、承攬廠商人員、工作人員填入 inspectors
+- 缺點代碼格式為數字加小數點，如 4.01.01、5.03.02，若無代碼則填空字串
+- 分數若查核紀錄中沒有則填 null
 
 查核紀錄內容：
 ${text.slice(0, 12000)}`
@@ -708,17 +714,145 @@ function setProgress(pct) {
 
 function renderRecent() {
   const el = document.getElementById('recent-uploads');
-  const recent = [...DB.records].sort((a,b) => new Date(b.createdAt||0) - new Date(a.createdAt||0)).slice(0, 5);
+  const recent = [...DB.records].sort((a,b) => new Date(b.createdAt||0) - new Date(a.createdAt||0)).slice(0, 10);
   if (!recent.length) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:10px;letter-spacing:.04em;text-transform:uppercase">最近匯入</div>
+  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:10px;letter-spacing:.04em;text-transform:uppercase">已匯入紀錄</div>
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden">
-  <table><thead><tr><th>標案名稱</th><th>查核日期</th><th>委員</th><th>缺點數</th></tr></thead><tbody>
+  <table><thead><tr><th>標案名稱</th><th>查核日期</th><th>委員</th><th>缺點數</th><th></th></tr></thead><tbody>
   ${recent.map(r => {
     const ins = DB.inspectors.filter(i => (i.records||[]).find(rc=>rc.recordId===r.id)).map(i=>i.name);
     const defs = DB.defects.filter(d=>d.recordId===r.id).length;
-    return `<tr><td>${r.project}</td><td>${r.date}</td><td>${ins.slice(0,3).join('、')}${ins.length>3?'…':''}</td><td><span class="tag tag-red">${defs}</span></td></tr>`;
+    return `<tr>
+      <td>${r.project.slice(0,20)}${r.project.length>20?'…':''}</td>
+      <td style="white-space:nowrap">${r.date}</td>
+      <td>${ins.slice(0,3).join('、')}${ins.length>3?'…':''}</td>
+      <td><span class="tag tag-red">${defs}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="editRecord('${r.id}')">編輯委員</button>
+        <button class="btn btn-red btn-sm" style="margin-left:4px" onclick="deleteRecord('${r.id}')">刪除</button>
+      </td>
+    </tr>`;
   }).join('')}
   </tbody></table></div>`;
+}
+
+async function deleteRecord(rid) {
+  if (!confirm('確認刪除此筆查核紀錄？相關缺點也會一併刪除。')) return;
+  // Remove from DB
+  DB.records = DB.records.filter(r=>r.id!==rid);
+  DB.defects = DB.defects.filter(d=>d.recordId!==rid);
+  DB.inspectors.forEach(ins => {
+    ins.records = (ins.records||[]).filter(r=>r.recordId!==rid);
+  });
+  // Remove from Supabase
+  await sb.from('defects').delete().eq('record_id', rid);
+  await sb.from('records').delete().eq('id', rid);
+  // Update inspectors in Supabase
+  for (const ins of DB.inspectors) await saveInspectorRow(ins);
+  updateStats(); renderRecent(); toast('已刪除', 'info');
+}
+
+function editRecord(rid) {
+  const rec = DB.records.find(r=>r.id===rid);
+  if (!rec) return;
+  const linked = DB.inspectors.filter(i=>(i.records||[]).find(r=>r.recordId===rid));
+  const allIns = DB.inspectors.map(i=>i.name).sort();
+
+  document.getElementById('modal-title').textContent = '編輯查核委員：' + rec.project.slice(0,20);
+  document.getElementById('modal-body').innerHTML = `
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px">查核日期：${rec.date}</div>
+    <div class="frow">
+      <label class="flabel">目前委員（勾選要保留的）</label>
+      <div id="ins-check-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
+        ${linked.map(ins=>`
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="checkbox" value="${ins.id}" checked style="width:14px;height:14px">
+            ${ins.name} <span style="font-size:11px;color:var(--text3)">${ins.role||''}</span>
+          </label>`).join('')}
+      </div>
+    </div>
+    <div class="frow">
+      <label class="flabel">新增委員（從資料庫選擇）</label>
+      <select class="fselect" id="add-ins-sel">
+        <option value="">── 選擇委員 ──</option>
+        ${allIns.filter(n=>!linked.find(i=>i.name===n)).map(n=>`<option value="${n}">${n}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="addInsToRecord('${rid}')">新增</button>
+    </div>
+    <div class="frow">
+      <label class="flabel">或手動輸入新委員姓名</label>
+      <div style="display:flex;gap:6px">
+        <input class="finput" id="new-ins-name" placeholder="姓名">
+        <select class="fselect" id="new-ins-role" style="width:100px">
+          <option value="外聘">外聘</option><option value="內聘">內聘</option><option value="領隊">領隊</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="addNewInsToRecord('${rid}')">新增</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('modal-foot').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+    <button class="btn btn-gold" onclick="saveRecordInspectors('${rid}')">儲存</button>
+  `;
+  document.getElementById('modal').style.display = 'flex';
+}
+
+function addInsToRecord(rid) {
+  const sel = document.getElementById('add-ins-sel');
+  const name = sel.value; if (!name) return;
+  const ins = DB.inspectors.find(i=>i.name===name); if (!ins) return;
+  const list = document.getElementById('ins-check-list');
+  list.innerHTML += `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+    <input type="checkbox" value="${ins.id}" checked style="width:14px;height:14px">
+    ${ins.name} <span style="font-size:11px;color:var(--text3)">${ins.role||''}</span>
+  </label>`;
+  sel.value = '';
+}
+
+async function addNewInsToRecord(rid) {
+  const name = document.getElementById('new-ins-name').value.trim();
+  const role = document.getElementById('new-ins-role').value;
+  if (!name) { toast('請輸入姓名','err'); return; }
+  let ins = DB.inspectors.find(i=>i.name===name);
+  if (!ins) {
+    ins = {id:'i_'+Date.now(), name, role, title:'', expertise:'', education:'', organization:'', note:'', records:[]};
+    DB.inspectors.push(ins);
+    await saveInspectorRow(ins);
+  }
+  const list = document.getElementById('ins-check-list');
+  list.innerHTML += `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+    <input type="checkbox" value="${ins.id}" checked style="width:14px;height:14px">
+    ${ins.name} <span style="font-size:11px;color:var(--text3)">${role}</span>
+  </label>`;
+  document.getElementById('new-ins-name').value = '';
+}
+
+async function saveRecordInspectors(rid) {
+  const rec = DB.records.find(r=>r.id===rid); if (!rec) return;
+  const checked = [...document.querySelectorAll('#ins-check-list input:checked')].map(el=>el.value);
+
+  // Update each inspector's records
+  for (const ins of DB.inspectors) {
+    const wasLinked = (ins.records||[]).some(r=>r.recordId===rid);
+    const shouldLink = checked.includes(ins.id);
+    if (wasLinked && !shouldLink) {
+      ins.records = ins.records.filter(r=>r.recordId!==rid);
+      await saveInspectorRow(ins);
+    } else if (!wasLinked && shouldLink) {
+      if (!ins.records) ins.records = [];
+      ins.records.push({recordId:rid, project:rec.project, date:rec.date, role:ins.role||''});
+      await saveInspectorRow(ins);
+    }
+  }
+  // Update defect inspector names
+  const newNames = DB.inspectors.filter(i=>checked.includes(i.id)&&i.role!=='領隊').map(i=>i.name);
+  const recDefs = DB.defects.filter(d=>d.recordId===rid);
+  for (const d of recDefs) {
+    d.inspectorNames = newNames;
+    d.inspector_names = newNames;
+    await saveDefectRow(d);
+  }
+  closeModal(); renderRecent(); renderInspectors(); toast('委員已更新', 'ok');
 }
 
 // ─── INSPECTORS ───────────────────────────────────────────────
