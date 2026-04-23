@@ -7,6 +7,7 @@
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -223,13 +224,14 @@ a.ext:hover{text-decoration:underline}
       </div>
 
       <div class="upload-zone" id="upload-zone">
-        <input type="file" id="file-input" accept=".docx,.odt,.txt" onchange="handleFile(this.files[0])">
+        <input type="file" id="file-input" accept=".docx,.odt,.txt,.pdf" onchange="handleFile(this.files[0])">
         <div class="upload-ico">📄</div>
         <div class="upload-title">拖曳或點擊上傳查核紀錄</div>
-        <div class="upload-sub">支援 .docx、.odt 格式 ── AI 自動解析，免手動操作</div>
+        <div class="upload-sub">支援 .docx、.odt、.pdf 格式 ── AI 自動解析，免手動操作</div>
         <div style="margin-top:14px;display:flex;gap:6px;justify-content:center">
           <span class="tag tag-gray">.docx</span>
           <span class="tag tag-gray">.odt</span>
+          <span class="tag tag-gray">.pdf</span>
         </div>
         <div class="progress-bar" id="prog-bar" style="display:none"><div class="progress-fill" id="prog-fill"></div></div>
       </div>
@@ -567,6 +569,21 @@ async function handleFile(file) {
       } catch(e2) {
         // Last resort: read as plain text
         text = await file.text();
+      }
+    } else if (file.name.endsWith('.pdf')) {
+      try {
+        const ab = await file.arrayBuffer();
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+        const pdf = await pdfjsLib.getDocument({data: ab}).promise;
+        const pages = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          pages.push(content.items.map(item => item.str).join(' '));
+        }
+        text = pages.join('\n');
+      } catch(e2) {
+        setStep('st1','err'); toast('PDF 讀取失敗：'+e2.message,'err'); return;
       }
     } else if (file.name.endsWith('.txt')) {
       text = await file.text();
