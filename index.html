@@ -186,7 +186,7 @@ a.ext:hover{text-decoration:underline}
   </div>
 </div>
 
-<div class="app">
+<div class="app" id="main-app">
   <!-- TOPBAR -->
   <div class="topbar">
     <div class="brand">
@@ -1852,36 +1852,39 @@ async function removeUser(id, email) {
 
 // ─── INIT ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  // Hide main app until authenticated
   const appEl = document.getElementById('main-app');
   const overlayEl = document.getElementById('auth-overlay');
   if (appEl) appEl.style.display = 'none';
 
-  // Handle OAuth redirect: if URL has access_token in hash, let Supabase process it
   const hash = window.location.hash;
-  if (hash && hash.includes('access_token')) {
-    // Supabase will pick this up via onAuthStateChange
-    // Clean the URL so it looks normal after login
-    history.replaceState(null, '', window.location.pathname);
-  }
+  const hasToken = hash && hash.includes('access_token');
 
-  // Listen for auth state changes (handles redirect callback too)
+  // Listen for auth state changes FIRST before anything else
   sb.auth.onAuthStateChange(async (event, session) => {
-    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session?.user) {
+      // Clean URL after Supabase has processed the token
+      if (window.location.hash.includes('access_token')) {
+        history.replaceState(null, '', window.location.pathname);
+      }
       await handleAuthUser(session.user);
     } else if (event === 'SIGNED_OUT') {
+      _authHandled = false;
       if (overlayEl) overlayEl.style.display = 'flex';
       if (appEl) appEl.style.display = 'none';
+    } else if (event === 'INITIAL_SESSION' && !session) {
+      // No session at all
+      if (overlayEl) overlayEl.style.display = 'flex';
     }
   });
 
-  // Check existing session on load
-  const { data: { session } } = await sb.auth.getSession();
-  if (session?.user) {
-    await handleAuthUser(session.user);
-  } else if (!hash.includes('access_token')) {
-    // Only show overlay if not waiting for OAuth redirect processing
-    if (overlayEl) overlayEl.style.display = 'flex';
+  // If no token in URL, also check existing session directly
+  if (!hasToken) {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user) {
+      await handleAuthUser(session.user);
+    } else {
+      if (overlayEl) overlayEl.style.display = 'flex';
+    }
   }
 
   loadKeyUI();
