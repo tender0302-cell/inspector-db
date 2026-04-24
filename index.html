@@ -1663,7 +1663,7 @@ async function signInWithGoogle() {
   btn.disabled = true; btn.textContent = '登入中…';
   const { error } = await sb.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: window.location.href }
+    options: { redirectTo: 'https://tender0302-cell.github.io/inspector-db/' }
   });
   if (error) {
     document.getElementById('auth-err').textContent = '登入失敗：' + error.message;
