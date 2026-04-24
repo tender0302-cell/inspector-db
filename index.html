@@ -160,7 +160,7 @@ a.ext:hover{text-decoration:underline}
 <body>
 
 <!-- AUTH OVERLAY -->
-<div class="auth-overlay" id="auth-overlay">
+<div class="auth-overlay" id="auth-overlay" style="display:none">
   <div class="auth-box">
     <div class="auth-logo">查</div>
     <div class="auth-title">工程查核委員資料庫</div>
@@ -1807,30 +1807,42 @@ async function removeUser(id, email) {
 }
 
 // ─── INIT ─────────────────────────────────────────────────────
-// Hide main app until authenticated
-document.getElementById('main-app').style.display = 'none';
+document.addEventListener('DOMContentLoaded', async () => {
+  // Hide main app until authenticated
+  const appEl = document.getElementById('main-app');
+  const overlayEl = document.getElementById('auth-overlay');
+  if (appEl) appEl.style.display = 'none';
 
-// Listen for auth state changes
-sb.auth.onAuthStateChange(async (event, session) => {
-  if (event === 'SIGNED_IN' && session?.user) {
-    await handleAuthUser(session.user);
-  } else if (event === 'SIGNED_OUT') {
-    document.getElementById('auth-overlay').style.display = 'flex';
-    document.getElementById('main-app').style.display = 'none';
+  // Handle OAuth redirect: if URL has access_token in hash, let Supabase process it
+  const hash = window.location.hash;
+  if (hash && hash.includes('access_token')) {
+    // Supabase will pick this up via onAuthStateChange
+    // Clean the URL so it looks normal after login
+    history.replaceState(null, '', window.location.pathname);
   }
-});
 
-// Check existing session on load
-sb.auth.getSession().then(({ data: { session } }) => {
+  // Listen for auth state changes (handles redirect callback too)
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+      await handleAuthUser(session.user);
+    } else if (event === 'SIGNED_OUT') {
+      if (overlayEl) overlayEl.style.display = 'flex';
+      if (appEl) appEl.style.display = 'none';
+    }
+  });
+
+  // Check existing session on load
+  const { data: { session } } = await sb.auth.getSession();
   if (session?.user) {
-    handleAuthUser(session.user);
-  } else {
-    document.getElementById('auth-overlay').style.display = 'flex';
+    await handleAuthUser(session.user);
+  } else if (!hash.includes('access_token')) {
+    // Only show overlay if not waiting for OAuth redirect processing
+    if (overlayEl) overlayEl.style.display = 'flex';
   }
-});
 
-loadKeyUI();
-setInterval(() => sb.from('records').select('id').limit(1), 4 * 24 * 60 * 60 * 1000);
+  loadKeyUI();
+  setInterval(() => sb.from('records').select('id').limit(1), 4 * 24 * 60 * 60 * 1000);
+});
 </script>
 </body>
 </html>
