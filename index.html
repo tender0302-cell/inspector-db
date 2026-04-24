@@ -25,7 +25,7 @@
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Noto Sans TC',sans-serif;font-size:14px;line-height:1.6}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px}
-.app{display:grid;grid-template-columns:220px 1fr;grid-template-rows:54px 1fr;height:100vh;overflow:hidden}
+.app{display:none;grid-template-columns:220px 1fr;grid-template-rows:54px 1fr;height:100vh;overflow:hidden}
 .topbar{grid-column:1/-1;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;justify-content:space-between;z-index:10}
 .sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:14px 10px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
 .main{overflow-y:auto;padding:28px 32px;background:var(--bg)}
@@ -160,7 +160,7 @@ a.ext:hover{text-decoration:underline}
 <body>
 
 <!-- AUTH OVERLAY -->
-<div class="auth-overlay" id="auth-overlay" style="display:none">
+<div class="auth-overlay" id="auth-overlay">
   <div class="auth-box">
     <div class="auth-logo">查</div>
     <div class="auth-title">工程查核委員資料庫</div>
@@ -1743,9 +1743,6 @@ async function signOut() {
   const appEl = document.getElementById('main-app');
   if (overlayEl) overlayEl.style.display = 'flex';
   if (appEl) appEl.style.display = 'none';
-  document.getElementById('user-pill').style.display = 'none';
-  document.getElementById('logout-btn').style.display = 'none';
-  document.getElementById('auth-err').textContent = '';
 }
 
 let _authHandled = false;
@@ -1906,7 +1903,14 @@ async function removeUser(id, email) {
 document.addEventListener('DOMContentLoaded', async () => {
   const appEl = document.getElementById('main-app');
   const overlayEl = document.getElementById('auth-overlay');
-  if (appEl) appEl.style.display = 'none';
+  // auth-overlay is visible by default (HTML), main-app hidden by CSS
+
+  // Safety check: if supabase didn't load, show error
+  if (typeof supabase === 'undefined') {
+    const errEl = document.getElementById('auth-err');
+    if (errEl) errEl.textContent = '系統載入失敗，請重新整理頁面（Ctrl+Shift+R）';
+    return;
+  }
 
   const hash = window.location.hash;
   const hasToken = hash && hash.includes('access_token');
@@ -1923,6 +1927,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       _authHandled = false;
       if (overlayEl) overlayEl.style.display = 'flex';
       if (appEl) appEl.style.display = 'none';
+      const pillEl = document.getElementById('user-pill');
+      const logoutEl = document.getElementById('logout-btn');
+      if (pillEl) pillEl.style.display = 'none';
+      if (logoutEl) logoutEl.style.display = 'none';
     } else if (event === 'INITIAL_SESSION' && !session) {
       // No session at all
       if (overlayEl) overlayEl.style.display = 'flex';
