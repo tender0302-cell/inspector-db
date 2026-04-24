@@ -459,36 +459,46 @@ let DB = {records:[], inspectors:[], defects:[]};
 
 // Load all data from Supabase on startup
 async function loadFromSupabase() {
+  const statusEl = document.getElementById('db-status');
+  if (statusEl) { statusEl.textContent = '連線中…'; statusEl.style.color = 'var(--text3)'; }
   try {
-    const [r, i, d] = await Promise.all([
-      sb.from('records').select('*'),
-      sb.from('inspectors').select('*'),
-      sb.from('defects').select('*')
+    // Add 10s timeout to each query
+    const withTimeout = (promise, ms=10000) => Promise.race([
+      promise,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('逾時')), ms))
     ]);
-    DB.records   = (r.data||[]).map(row => ({
-      ...row,
-      scores: row.scores||{},
-      createdAt: row.created_at||''
+
+    const [r, i, d] = await Promise.all([
+      withTimeout(sb.from('records').select('*')),
+      withTimeout(sb.from('inspectors').select('*')),
+      withTimeout(sb.from('defects').select('*'))
+    ]);
+
+    if (r.error) throw new Error('records: ' + r.error.message);
+    if (i.error) throw new Error('inspectors: ' + i.error.message);
+    if (d.error) throw new Error('defects: ' + d.error.message);
+
+    DB.records = (r.data||[]).map(row => ({
+      ...row, scores: row.scores||{}, createdAt: row.created_at||''
     }));
-    DB.inspectors= (i.data||[]).map(row => ({
+    DB.inspectors = (i.data||[]).map(row => ({
       ...row,
-      records: (row.records||[]).map(r => ({
-        ...r,
-        recordId: r.recordId || r.record_id || ''
+      records: (row.records||[]).map(rc => ({
+        ...rc, recordId: rc.recordId || rc.record_id || ''
       }))
     }));
-    DB.defects   = (d.data||[]).map(row => ({
+    DB.defects = (d.data||[]).map(row => ({
       ...row,
       recordId: row.record_id || row.recordId || '',
       inspectorNames: row.inspector_names || row.inspectorNames || [],
       inspector_names: row.inspector_names || row.inspectorNames || []
     }));
+
     updateStats(); renderRecent();
-    document.getElementById('db-status').textContent = '✓ 已連線';
-    document.getElementById('db-status').style.color = 'var(--green)';
+    if (statusEl) { statusEl.textContent = '✓ 已連線'; statusEl.style.color = 'var(--green)'; }
   } catch(e) {
-    document.getElementById('db-status').textContent = '⚠ 資料庫連線失敗';
-    document.getElementById('db-status').style.color = 'var(--red)';
+    console.error('loadFromSupabase error:', e);
+    if (statusEl) { statusEl.textContent = '連線失敗：' + e.message; statusEl.style.color = 'var(--red)'; }
   }
 }
 
