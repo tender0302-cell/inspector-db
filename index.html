@@ -1018,15 +1018,39 @@ function renderInspectors() {
     const projs = [...new Set(recs.map(r=>r.project))];
 
     const hasContact = !!(ins.phone || ins.email);
+
+    // Calculate role breakdown from actual records
+    const roleCount = {外聘:0, 內聘:0, 領隊:0, 其他:0};
+    recs.forEach(r => {
+      const role = r.role||'其他';
+      if (roleCount[role] !== undefined) roleCount[role]++;
+      else roleCount['其他']++;
+    });
+    const allInternal = recs.length > 0 && roleCount['外聘'] === 0 && roleCount['領隊'] === 0;
+
+    // Avatar color: green=has contact, blue=all internal, default=gold
     const avatarStyle = hasContact
       ? 'background:rgba(106,170,122,0.18);border-color:rgba(106,170,122,0.4);color:var(--green)'
-      : '';
+      : allInternal
+        ? 'background:rgba(91,143,212,0.18);border-color:rgba(91,143,212,0.4);color:var(--blue)'
+        : '';
+    const cardBorderStyle = allInternal && !hasContact ? 'border-color:rgba(91,143,212,0.25)' : '';
 
-    return `<div class="icard" id="ic-${ins.id}">
+    // Role summary for profile tab
+    const roleSummary = Object.entries(roleCount)
+      .filter(([,v])=>v>0)
+      .map(([k,v])=>`<span class="tag ${k==='外聘'?'tag-gold':k==='內聘'?'tag-blue':'tag-gray'}" style="font-size:10px">${k} ${v}次</span>`)
+      .join(' ');
+
+    return `<div class="icard" id="ic-${ins.id}" style="${cardBorderStyle}">
       <div class="icard-head" onclick="toggleCard('${ins.id}')">
-        <div class="avatar" style="${avatarStyle}" title="${hasContact?'已有聯絡資料':'尚無聯絡資料'}">${ins.name.slice(0,1)}</div>
+        <div class="avatar" style="${avatarStyle}" title="${hasContact?'已有聯絡資料':allInternal?'全為內聘委員':'尚無聯絡資料'}">${ins.name.slice(0,1)}</div>
         <div style="flex:1;min-width:0">
-          <div class="iname">${ins.name}${hasContact?` <span style="font-size:10px;color:var(--green);margin-left:4px">✓ 有聯絡方式</span>`:''}</div>
+          <div class="iname">
+            ${ins.name}
+            ${hasContact?`<span style="font-size:10px;color:var(--green);margin-left:4px">✓ 有聯絡方式</span>`:''}
+            ${allInternal?`<span style="font-size:10px;color:var(--blue);margin-left:4px">內聘</span>`:''}
+          </div>
           <div class="imeta">查核 ${recs.length} 次・累計開缺 ${myDefs.length} 項・最近：${latestDate}</div>
         </div>
         <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;max-width:320px;justify-content:flex-end">
@@ -1048,7 +1072,7 @@ function renderInspectors() {
             <span class="info-k">所屬機構</span><span class="info-v">${ins.organization||dim('未填寫')}</span>
             <span class="info-k">學歷</span><span class="info-v">${ins.education||dim('未填寫')}</span>
             <span class="info-k">專長領域</span><span class="info-v">${ins.expertise||dim('未填寫')}</span>
-            <span class="info-k">查核身分</span><span class="info-v">${ins.role||dim('-')}</span>
+            <span class="info-k">查核身分</span><span class="info-v">${roleSummary||dim('-')}</span>
             <span class="info-k">電話</span><span class="info-v">${ins.phone ? `<a href="tel:${ins.phone}" style="color:var(--green)">${ins.phone}</a>` : dim('未填寫')}</span>
             <span class="info-k">Email</span><span class="info-v">${ins.email ? `<a href="mailto:${ins.email}" style="color:var(--blue)">${ins.email}</a>` : dim('未填寫')}</span>
             <span class="info-k">備註</span><span class="info-v">${ins.note||dim('-')}</span>
@@ -1063,7 +1087,19 @@ function renderInspectors() {
             <thead><tr><th>查核日期</th><th>案場名稱</th><th>身分</th><th>開缺數</th></tr></thead>
             <tbody>${recs.map(r => {
               const cnt = DB.defects.filter(d=>d.recordId===r.recordId&&d.inspectorNames&&d.inspectorNames.includes(ins.name)).length;
-              return `<tr><td>${r.date}</td><td>${r.project}</td><td><span class="tag tag-gray" style="font-size:10px">${r.role||'-'}</span></td><td><span class="tag tag-red" style="font-size:10px">${cnt}</span></td></tr>`;
+              const roleColor = r.role==='外聘'?'tag-gold':r.role==='內聘'?'tag-blue':'tag-gray';
+              return `<tr>
+                <td>${r.date}</td>
+                <td>${r.project}</td>
+                <td>
+                  <select class="fselect" style="height:26px;font-size:11px;padding:0 6px;width:80px" onchange="updateInsRole('${ins.id}','${r.recordId}',this.value)" onclick="event.stopPropagation()">
+                    <option value="外聘" ${r.role==='外聘'?'selected':''}>外聘</option>
+                    <option value="內聘" ${r.role==='內聘'?'selected':''}>內聘</option>
+                    <option value="領隊" ${r.role==='領隊'?'selected':''}>領隊</option>
+                  </select>
+                </td>
+                <td><span class="tag tag-red" style="font-size:10px">${cnt}</span></td>
+              </tr>`;
             }).join('')}</tbody>
           </table></div>` : '<div class="empty">無查核紀錄</div>'}
         </div>
@@ -1147,6 +1183,22 @@ async function deleteInspector(id, name) {
   DB.inspectors = DB.inspectors.filter(i=>i.id!==id);
   await sb.from('inspectors').delete().eq('id', id);
   updateStats(); renderInspectors(); toast(`已刪除委員「${name}」`, 'info');
+}
+
+async function updateInsRole(insId, recordId, newRole) {
+  const ins = DB.inspectors.find(i=>i.id===insId);
+  if (!ins) return;
+  const rec = ins.records.find(r=>r.recordId===recordId);
+  if (rec) rec.role = newRole;
+  // Also update ins.role to reflect most common non-leader role
+  const extRoles = ins.records.filter(r=>r.role!=='領隊').map(r=>r.role);
+  if (extRoles.length) ins.role = extRoles[extRoles.length-1];
+  try {
+    await saveInspectorRow(ins);
+    toast(`身分已更新為「${newRole}」`, 'ok');
+    // Re-render to update colors
+    renderInspectors();
+  } catch(e) { toast('儲存失敗：'+e.message,'err'); }
 }
 
 function openAddInspector() {
