@@ -143,9 +143,35 @@ tr:hover td{background:rgba(255,255,255,0.015)}
 .hstep-desc{font-size:11px;color:var(--text3);line-height:1.7}
 a.ext{color:var(--blue);text-decoration:none}
 a.ext:hover{text-decoration:underline}
+.auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;align-items:center;justify-content:center}
+.auth-box{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:44px 40px;width:380px;text-align:center}
+.auth-logo{width:54px;height:54px;background:var(--gold);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#0f0f0e;margin:0 auto 20px;font-family:'JetBrains Mono',monospace}
+.auth-title{font-size:18px;font-weight:500;margin-bottom:5px}
+.auth-sub{font-size:12px;color:var(--text3);margin-bottom:28px;line-height:1.6}
+.google-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:44px;background:#fff;border:none;border-radius:var(--r);font-size:13px;font-weight:500;cursor:pointer;color:#3c4043;transition:.15s;font-family:'Noto Sans TC',sans-serif}
+.google-btn:hover{background:#f5f5f5;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.google-btn:disabled{opacity:.5;cursor:not-allowed}
+.auth-err{font-size:12px;color:var(--red);margin-top:14px;min-height:18px;line-height:1.6}
+.user-pill{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)}
+.user-av{width:24px;height:24px;border-radius:50%;object-fit:cover;border:1px solid var(--border2)}
+.user-av-txt{width:24px;height:24px;border-radius:50%;background:var(--gold-dim);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--gold)}
 </style>
 </head>
 <body>
+
+<!-- AUTH OVERLAY -->
+<div class="auth-overlay" id="auth-overlay">
+  <div class="auth-box">
+    <div class="auth-logo">查</div>
+    <div class="auth-title">工程查核委員資料庫</div>
+    <div class="auth-sub">請使用 Google 帳號登入<br>僅限管理員授權的帳號可存取</div>
+    <button class="google-btn" id="google-login-btn" onclick="signInWithGoogle()">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A353" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>
+      使用 Google 帳號登入
+    </button>
+    <div class="auth-err" id="auth-err"></div>
+  </div>
+</div>
 <div class="toasts" id="toasts"></div>
 
 <!-- MODAL -->
@@ -173,7 +199,13 @@ a.ext:hover{text-decoration:underline}
     <div style="display:flex;align-items:center;gap:12px">
       <span id="db-status" style="font-size:11px;color:var(--text3)">連線中…</span>
       <span id="api-status" style="font-size:11px;color:var(--text3)"></span>
+      <div class="user-pill" id="user-pill" style="display:none">
+        <div class="user-av-txt" id="user-av">?</div>
+        <span id="user-name"></span>
+        <span id="admin-badge" style="display:none;font-size:10px;padding:1px 7px;border-radius:10px;background:var(--gold-dim);color:var(--gold);border:1px solid rgba(200,169,110,0.2)">管理員</span>
+      </div>
       <button class="btn btn-ghost btn-sm" onclick="nav(document.querySelector('[data-panel=settings]'))">⚙ 設定 API Key</button>
+      <button class="btn btn-ghost btn-sm" id="logout-btn" style="display:none" onclick="signOut()">登出</button>
     </div>
   </div>
 
@@ -199,6 +231,9 @@ a.ext:hover{text-decoration:underline}
     <div class="nav-item" data-panel="settings" onclick="nav(this)">
       <span class="nav-ico">⚙</span>設定
     </div>
+    <div class="nav-item" data-panel="admin" onclick="nav(this)" id="nav-admin" style="display:none">
+      <span class="nav-ico">👑</span>帳號管理
+    </div>
     <div class="nav-item" data-panel="backup" onclick="nav(this)">
       <span class="nav-ico">💾</span>備份還原
     </div>
@@ -214,6 +249,7 @@ a.ext:hover{text-decoration:underline}
           <div class="ph-title">上傳查核紀錄</div>
           <div class="ph-sub">上傳 .odt 或 .docx 檔案，AI 自動解析委員姓名與缺點，存入資料庫</div>
         </div>
+        <button class="btn btn-ghost" onclick="openManualRecord()">✏ 手動新增查核紀錄</button>
       </div>
 
       <div class="stats">
@@ -387,6 +423,27 @@ a.ext:hover{text-decoration:underline}
       </div>
     </div>
 
+    <!-- ===== ADMIN ===== -->
+    <div id="panel-admin" class="panel">
+      <div class="ph">
+        <div>
+          <div class="ph-title">帳號管理</div>
+          <div class="ph-sub">管理可登入帳號與查看登入紀錄</div>
+        </div>
+        <button class="btn btn-gold" onclick="openAddUser()">＋ 新增授權帳號</button>
+      </div>
+
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-bottom:16px">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:500">授權帳號清單</div>
+        <div id="users-table"><div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">載入中…</div></div>
+      </div>
+
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:500">登入紀錄（最近 50 筆）</div>
+        <div id="login-logs-table"><div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">載入中…</div></div>
+      </div>
+    </div>
+
   </div><!-- /main -->
 </div><!-- /app -->
 
@@ -394,7 +451,7 @@ a.ext:hover{text-decoration:underline}
 // ─── DB ───────────────────────────────────────────────────────
 // ─── SUPABASE CONFIG ──────────────────────────────────────────
 const SB_URL = 'https://fxphezzatmbapcwxlthd.supabase.co';
-const SB_KEY = 'sb_publishable_TMKPC2Qsl6eMW8dA3cIkVA_GERaU1g_';
+const SB_KEY = 'sb_publishable_-cgAH4K5VMkPwE6R1sChnw_sYUKBl0b';
 const sb = supabase.createClient(SB_URL, SB_KEY);
 
 // Local cache for fast UI rendering
@@ -448,7 +505,9 @@ async function saveInspectorRow(ins) {
   const {error} = await sb.from('inspectors').upsert({
     id: ins.id, name: ins.name, role: ins.role, title: ins.title,
     expertise: ins.expertise, education: ins.education,
-    organization: ins.organization, note: ins.note, records: ins.records||[]
+    organization: ins.organization, note: ins.note,
+    phone: ins.phone||'', email: ins.email||'',
+    records: ins.records||[]
   });
   if (error) throw error;
 }
@@ -475,6 +534,7 @@ function nav(el) {
   if (panel === 'defects') { fillProjectSel('fd-project'); fillInspSel('fd-inspector'); renderDefects(); }
   if (panel === 'projects') renderProjects();
   if (panel === 'settings') loadKeyUI();
+  if (panel === 'admin' && IS_ADMIN) renderAdminPanel();
 }
 
 // ─── STATS ────────────────────────────────────────────────────
@@ -947,11 +1007,16 @@ function renderInspectors() {
     const latestDate = recs[0]?.date || '-';
     const projs = [...new Set(recs.map(r=>r.project))];
 
+    const hasContact = !!(ins.phone || ins.email);
+    const avatarStyle = hasContact
+      ? 'background:rgba(106,170,122,0.18);border-color:rgba(106,170,122,0.4);color:var(--green)'
+      : '';
+
     return `<div class="icard" id="ic-${ins.id}">
       <div class="icard-head" onclick="toggleCard('${ins.id}')">
-        <div class="avatar">${ins.name.slice(0,1)}</div>
+        <div class="avatar" style="${avatarStyle}" title="${hasContact?'已有聯絡資料':'尚無聯絡資料'}">${ins.name.slice(0,1)}</div>
         <div style="flex:1;min-width:0">
-          <div class="iname">${ins.name}</div>
+          <div class="iname">${ins.name}${hasContact?` <span style="font-size:10px;color:var(--green);margin-left:4px">✓ 有聯絡方式</span>`:''}</div>
           <div class="imeta">查核 ${recs.length} 次・累計開缺 ${myDefs.length} 項・最近：${latestDate}</div>
         </div>
         <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;max-width:320px;justify-content:flex-end">
@@ -974,6 +1039,8 @@ function renderInspectors() {
             <span class="info-k">學歷</span><span class="info-v">${ins.education||dim('未填寫')}</span>
             <span class="info-k">專長領域</span><span class="info-v">${ins.expertise||dim('未填寫')}</span>
             <span class="info-k">查核身分</span><span class="info-v">${ins.role||dim('-')}</span>
+            <span class="info-k">電話</span><span class="info-v">${ins.phone ? `<a href="tel:${ins.phone}" style="color:var(--green)">${ins.phone}</a>` : dim('未填寫')}</span>
+            <span class="info-k">Email</span><span class="info-v">${ins.email ? `<a href="mailto:${ins.email}" style="color:var(--blue)">${ins.email}</a>` : dim('未填寫')}</span>
             <span class="info-k">備註</span><span class="info-v">${ins.note||dim('-')}</span>
           </div>
           <div style="margin-top:8px;padding:10px 12px;background:var(--bg3);border-radius:var(--r);font-size:11px;color:var(--text3);line-height:1.8">
@@ -1028,6 +1095,10 @@ function editInspector(id) {
     <div class="frow"><label class="flabel">所屬機構</label><input class="finput" id="e-org" value="${esc(ins.organization||'')}"></div>
     <div class="frow"><label class="flabel">學歷</label><input class="finput" id="e-edu" value="${esc(ins.education||'')}"></div>
     <div class="frow"><label class="flabel">專長領域</label><textarea class="ftextarea" id="e-exp">${ins.expertise||''}</textarea></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="frow"><label class="flabel">電話</label><input class="finput" id="e-phone" type="tel" placeholder="如：0912-345-678" value="${esc(ins.phone||'')}"></div>
+      <div class="frow"><label class="flabel">Email</label><input class="finput" id="e-email" type="email" placeholder="如：name@example.com" value="${esc(ins.email||'')}"></div>
+    </div>
     <div class="frow"><label class="flabel">備註</label><textarea class="ftextarea" id="e-note">${ins.note||''}</textarea></div>
   `;
   document.getElementById('modal-foot').innerHTML = `
@@ -1043,6 +1114,8 @@ async function saveInspector(id) {
   ins.organization = document.getElementById('e-org').value.trim();
   ins.education = document.getElementById('e-edu').value.trim();
   ins.expertise = document.getElementById('e-exp').value.trim();
+  ins.phone = document.getElementById('e-phone').value.trim();
+  ins.email = document.getElementById('e-email').value.trim();
   ins.note = document.getElementById('e-note').value.trim();
   try { await saveInspectorRow(ins); } catch(e) { toast('儲存失敗：'+e.message,'err'); return; }
   closeModal(); renderInspectors(); toast('委員資料已儲存', 'ok');
@@ -1074,6 +1147,10 @@ function openAddInspector() {
     <div class="frow"><label class="flabel">所屬機構</label><input class="finput" id="e-org" placeholder="如：成功大學、工程顧問公司"></div>
     <div class="frow"><label class="flabel">學歷</label><input class="finput" id="e-edu" placeholder="如：土木工程博士"></div>
     <div class="frow"><label class="flabel">專長領域</label><textarea class="ftextarea" id="e-exp" placeholder="如：結構工程、品質管理、施工安全"></textarea></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="frow"><label class="flabel">電話</label><input class="finput" id="e-phone" type="tel" placeholder="如：0912-345-678"></div>
+      <div class="frow"><label class="flabel">Email</label><input class="finput" id="e-email" type="email" placeholder="如：name@example.com"></div>
+    </div>
     <div class="frow"><label class="flabel">備註</label><textarea class="ftextarea" id="e-note"></textarea></div>
   `;
   document.getElementById('modal-foot').innerHTML = `
@@ -1086,7 +1163,7 @@ async function addInspector() {
   const name = document.getElementById('e-name').value.trim();
   if (!name) { toast('請填寫姓名', 'err'); return; }
   if (DB.inspectors.find(i=>i.name===name)) { toast('此姓名已存在', 'err'); return; }
-  const ins = { id:'i_'+Date.now(), name, role:'', title:document.getElementById('e-title').value.trim(), organization:document.getElementById('e-org').value.trim(), education:document.getElementById('e-edu').value.trim(), expertise:document.getElementById('e-exp').value.trim(), note:document.getElementById('e-note').value.trim(), records:[] };
+  const ins = { id:'i_'+Date.now(), name, role:'', title:document.getElementById('e-title').value.trim(), organization:document.getElementById('e-org').value.trim(), education:document.getElementById('e-edu').value.trim(), expertise:document.getElementById('e-exp').value.trim(), phone:document.getElementById('e-phone').value.trim(), email:document.getElementById('e-email').value.trim(), note:document.getElementById('e-note').value.trim(), records:[] };
   DB.inspectors.push(ins);
   try { await saveInspectorRow(ins); } catch(e) { toast('儲存失敗：'+e.message,'err'); return; }
   closeModal(); renderInspectors(); updateStats(); toast('委員已新增', 'ok');
@@ -1167,14 +1244,113 @@ function renderProjects() {
         <div style="display:flex;gap:5px;flex-wrap:wrap">${Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="tag tag-red" style="font-size:10px">${k}：${v}項</span>`).join('')}</div>
       </div>` : ''}
       <div style="margin-top:10px">
-        <div style="font-size:10px;color:var(--text3);margin-bottom:4px">查核紀錄（${recs.length} 次）</div>
-        ${recs.map(r=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--border)">
-          <span style="color:var(--text2)">${r.date}</span>
-          <span style="color:var(--text3)">${DB.defects.filter(d=>d.recordId===r.id).length} 項缺點</span>
-        </div>`).join('')}
+        <div style="font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:.04em;text-transform:uppercase">查核紀錄（${recs.length} 次）</div>
+        ${recs.map(r=>{
+          const defs = DB.defects.filter(d=>d.recordId===r.id);
+          return `<div style="border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px;overflow:hidden">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg3);cursor:pointer;user-select:none" onclick="toggleRecordDefs('rd-${r.id}',this)">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:12px;color:var(--text2)">${r.date}</span>
+                <span class="tag tag-red" style="font-size:10px">${defs.length} 項缺點</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openAddDefect('${r.id}','${encodeURIComponent(r.project)}','${r.date}')">＋ 新增缺點</button>
+                <span style="font-size:10px;color:var(--text3)" id="rd-${r.id}-arrow">▶ 展開</span>
+              </div>
+            </div>
+            <div id="rd-${r.id}" style="display:none">
+              ${defs.length===0 ? `<div style="padding:10px 12px;font-size:12px;color:var(--text3)">無缺點紀錄</div>` :
+              `<table style="width:100%;border-collapse:collapse;font-size:12px">
+                <thead><tr>
+                  <th style="padding:7px 12px;text-align:left;font-size:10px;color:var(--text3);border-bottom:1px solid var(--border);background:var(--bg2);white-space:nowrap">代碼</th>
+                  <th style="padding:7px 12px;text-align:left;font-size:10px;color:var(--text3);border-bottom:1px solid var(--border);background:var(--bg2)">缺點內容</th>
+                  <th style="padding:7px 12px;text-align:left;font-size:10px;color:var(--text3);border-bottom:1px solid var(--border);background:var(--bg2);white-space:nowrap">類別</th>
+                  <th style="padding:7px 12px;border-bottom:1px solid var(--border);background:var(--bg2);white-space:nowrap"></th>
+                </tr></thead>
+                <tbody>${defs.map((d,idx)=>`<tr id="drow-${d.id}">
+                  <td style="padding:7px 12px;border-bottom:1px solid var(--border);white-space:nowrap"><span class="mono">${d.code||'—'}</span></td>
+                  <td style="padding:7px 12px;border-bottom:1px solid var(--border);line-height:1.5">${d.content}</td>
+                  <td style="padding:7px 12px;border-bottom:1px solid var(--border);white-space:nowrap"><span class="tag ${catTagClass(d.code)}" style="font-size:10px">${catLabel(d.code)}</span></td>
+                  <td style="padding:7px 12px;border-bottom:1px solid var(--border);white-space:nowrap">
+                    <button class="btn btn-ghost btn-sm" onclick="editDefect('${d.id}')">編輯</button>
+                    <button class="btn btn-red btn-sm" style="margin-left:4px" onclick="deleteDefect('${d.id}','${r.id}')">刪除</button>
+                  </td>
+                </tr>`).join('')}</tbody>
+              </table>`}
+            </div>
+          </div>`;
+        }).join('')}
       </div>
     </div>`;
   }).join('');
+}
+
+function toggleRecordDefs(id, headEl) {
+  const panel = document.getElementById(id);
+  const arrow = document.getElementById(id+'-arrow');
+  const open = panel.style.display === 'none';
+  panel.style.display = open ? 'block' : 'none';
+  if(arrow) arrow.textContent = open ? '▼ 收起' : '▶ 展開';
+}
+
+function openAddDefect(rid, projEnc, date) {
+  const proj = decodeURIComponent(projEnc);
+  const insNames = DB.inspectors.filter(i=>(i.records||[]).some(r=>r.recordId===rid)&&i.role!=='領隊').map(i=>i.name);
+  document.getElementById('modal-title').textContent = '新增缺點';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px">${proj}<br>${date}</div>
+    <div class="frow"><label class="flabel">缺點代碼（選填，如 4.01.01）</label><input class="finput" id="nd-code" placeholder="無代碼可留空"></div>
+    <div class="frow"><label class="flabel">缺點內容 *</label><textarea class="ftextarea" id="nd-content" style="min-height:100px" placeholder="請輸入缺點完整內容"></textarea></div>
+  `;
+  document.getElementById('modal-foot').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+    <button class="btn btn-gold" onclick="saveNewDefect('${rid}','${projEnc}','${date}')">新增</button>
+  `;
+  document.getElementById('modal').style.display = 'flex';
+}
+
+async function saveNewDefect(rid, projEnc, date) {
+  const proj = decodeURIComponent(projEnc);
+  const code = document.getElementById('nd-code').value.trim();
+  const content = document.getElementById('nd-content').value.trim();
+  if (!content) { toast('請填寫缺點內容','err'); return; }
+  const insNames = DB.inspectors.filter(i=>(i.records||[]).some(r=>r.recordId===rid)&&i.role!=='領隊').map(i=>i.name);
+  const d = { id:'d_'+Date.now()+'_'+Math.random().toString(36).slice(2,5), recordId:rid, project:proj, date, code, content, inspectorNames:insNames, inspector_names:insNames };
+  DB.defects.push(d);
+  try { await saveDefectRow(d); } catch(e) { toast('儲存失敗：'+e.message,'err'); return; }
+  closeModal(); renderProjects(); updateStats(); toast('缺點已新增','ok');
+}
+
+function editDefect(did) {
+  const d = DB.defects.find(x=>x.id===did);
+  if (!d) return;
+  document.getElementById('modal-title').textContent = '編輯缺點';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="frow"><label class="flabel">缺點代碼</label><input class="finput" id="ed-code" value="${esc(d.code||'')}"></div>
+    <div class="frow"><label class="flabel">缺點內容</label><textarea class="ftextarea" id="ed-content" style="min-height:120px">${d.content}</textarea></div>
+  `;
+  document.getElementById('modal-foot').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+    <button class="btn btn-gold" onclick="saveEditDefect('${did}')">儲存</button>
+  `;
+  document.getElementById('modal').style.display = 'flex';
+}
+
+async function saveEditDefect(did) {
+  const d = DB.defects.find(x=>x.id===did);
+  if (!d) return;
+  d.code = document.getElementById('ed-code').value.trim();
+  d.content = document.getElementById('ed-content').value.trim();
+  if (!d.content) { toast('缺點內容不能為空','err'); return; }
+  try { await saveDefectRow(d); } catch(e) { toast('儲存失敗：'+e.message,'err'); return; }
+  closeModal(); renderProjects(); toast('缺點已更新','ok');
+}
+
+async function deleteDefect(did, rid) {
+  if (!confirm('確認刪除此項缺點？')) return;
+  DB.defects = DB.defects.filter(d=>d.id!==did);
+  await sb.from('defects').delete().eq('id', did);
+  updateStats(); renderProjects(); toast('缺點已刪除','info');
 }
 
 function editProject(projEnc) {
@@ -1318,10 +1494,342 @@ function toast(msg, type='info') {
   setTimeout(() => el.remove(), 3200);
 }
 
+// ─── MANUAL RECORD ────────────────────────────────────────────
+function openManualRecord() {
+  const projList = [...new Set(DB.records.map(r=>r.project))].sort();
+  const insAll = [...DB.inspectors].sort((a,b)=>a.name.localeCompare(b.name,'zh-TW'));
+
+  document.getElementById('modal-title').textContent = '手動新增查核紀錄';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="frow">
+      <label class="flabel">標案名稱 *</label>
+      <input class="finput" id="mr-project" list="mr-proj-list" placeholder="可輸入新案場或選擇現有">
+      <datalist id="mr-proj-list">${projList.map(p=>`<option value="${esc(p)}">`).join('')}</datalist>
+    </div>
+    <div class="frow">
+      <label class="flabel">查核日期 *</label>
+      <input class="finput" id="mr-date" type="date">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="frow">
+        <label class="flabel">地點</label>
+        <input class="finput" id="mr-location" placeholder="如：台中市北屯區">
+      </div>
+      <div class="frow">
+        <label class="flabel">主辦機關</label>
+        <input class="finput" id="mr-authority" placeholder="如：臺中市政府交通局">
+      </div>
+    </div>
+    <div class="frow">
+      <label class="flabel">承包商</label>
+      <input class="finput" id="mr-contractor" placeholder="如：五湖四海營造股份有限公司">
+    </div>
+    <div class="frow">
+      <label class="flabel">查核委員（可多位，每行一位）</label>
+      <div id="mr-ins-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+      <button class="btn btn-ghost btn-sm" onclick="addMrInsRow()" style="width:100%">＋ 新增委員</button>
+    </div>
+    <div class="frow">
+      <label class="flabel">品質指標分數（選填）</label>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">環境</div><input class="finput" id="mr-env" type="number" step="0.01" placeholder="—"></div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">安全</div><input class="finput" id="mr-safety" type="number" step="0.01" placeholder="—"></div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">強度</div><input class="finput" id="mr-strength" type="number" step="0.01" placeholder="—"></div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">美觀</div><input class="finput" id="mr-aes" type="number" step="0.01" placeholder="—"></div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">功能</div><input class="finput" id="mr-func" type="number" step="0.01" placeholder="—"></div>
+      </div>
+    </div>
+    <div class="frow">
+      <label class="flabel">缺點（每行一筆，格式：代碼 缺點內容，代碼可省略）</label>
+      <textarea class="ftextarea" id="mr-defects" style="min-height:120px;font-family:'JetBrains Mono',monospace;font-size:12px" placeholder="範例：
+4.01.01 契約內監造單位材料設備抽驗費用不符
+5.14.01 防墜護欄搖晃不穩固
+無代碼的缺點直接輸入內容即可"></textarea>
+    </div>
+  `;
+  document.getElementById('modal-foot').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+    <button class="btn btn-gold" onclick="saveManualRecord()">儲存</button>
+  `;
+  // Add first inspector row
+  addMrInsRow();
+  document.getElementById('modal').style.display = 'flex';
+}
+
+function addMrInsRow() {
+  const insAll = [...DB.inspectors].sort((a,b)=>a.name.localeCompare(b.name,'zh-TW'));
+  const list = document.getElementById('mr-ins-list');
+  const idx = list.children.length;
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:6px;align-items:center';
+  row.innerHTML = `
+    <input class="finput mr-ins-name" list="mr-ins-datalist" placeholder="委員姓名" style="flex:1">
+    <select class="fselect mr-ins-role" style="width:80px">
+      <option value="外聘">外聘</option>
+      <option value="內聘">內聘</option>
+      <option value="領隊">領隊</option>
+    </select>
+    <button class="btn btn-red btn-sm" onclick="this.parentElement.remove()" style="flex-shrink:0">✕</button>
+  `;
+  list.appendChild(row);
+  // Add shared datalist if not exists
+  if (!document.getElementById('mr-ins-datalist')) {
+    const dl = document.createElement('datalist');
+    dl.id = 'mr-ins-datalist';
+    dl.innerHTML = insAll.map(i=>`<option value="${esc(i.name)}">`).join('');
+    document.body.appendChild(dl);
+  }
+}
+
+async function saveManualRecord() {
+  const project = document.getElementById('mr-project').value.trim();
+  const date = document.getElementById('mr-date').value;
+  if (!project) { toast('請填寫標案名稱','err'); return; }
+  if (!date) { toast('請選擇查核日期','err'); return; }
+  if (DB.records.find(r=>r.project===project&&r.date===date)) { toast('此案場同日期紀錄已存在','err'); return; }
+
+  const rid = 'r_'+Date.now();
+  const rec = {
+    id: rid, project, date,
+    location: document.getElementById('mr-location').value.trim(),
+    authority: document.getElementById('mr-authority').value.trim(),
+    contractor: document.getElementById('mr-contractor').value.trim(),
+    scores: {
+      env: parseFloat(document.getElementById('mr-env').value)||null,
+      safety: parseFloat(document.getElementById('mr-safety').value)||null,
+      strength: parseFloat(document.getElementById('mr-strength').value)||null,
+      aesthetics: parseFloat(document.getElementById('mr-aes').value)||null,
+      function: parseFloat(document.getElementById('mr-func').value)||null
+    },
+    file: '手動新增', createdAt: new Date().toISOString()
+  };
+
+  // Parse inspectors
+  const insRows = document.querySelectorAll('#mr-ins-list > div');
+  const inspectors = [];
+  insRows.forEach(row => {
+    const name = row.querySelector('.mr-ins-name').value.trim();
+    const role = row.querySelector('.mr-ins-role').value;
+    if (name) inspectors.push({name, role});
+  });
+
+  // Parse defects
+  const defectText = document.getElementById('mr-defects').value.trim();
+  const defects = [];
+  if (defectText) {
+    defectText.split('\n').forEach(line => {
+      line = line.trim(); if (!line) return;
+      // Try to match code at start: digits and dots
+      const m = line.match(/^(\d[\d.]+)\s+(.+)$/);
+      if (m) defects.push({code: m[1], content: m[2]});
+      else defects.push({code:'', content: line});
+    });
+  }
+
+  DB.records.push(rec);
+  try { await saveRecord(rec); } catch(e) { toast('儲存失敗：'+e.message,'err'); return; }
+
+  // Save inspectors
+  const insNames = inspectors.filter(i=>i.role!=='領隊').map(i=>i.name);
+  for (const ins of inspectors) {
+    let ex = DB.inspectors.find(i=>i.name===ins.name);
+    if (!ex) {
+      ex = {id:'i_'+Date.now()+'_'+Math.random().toString(36).slice(2,5), name:ins.name, role:ins.role, title:'', expertise:'', education:'', organization:'', note:'', records:[]};
+      DB.inspectors.push(ex);
+    }
+    if (!ex.records) ex.records = [];
+    if (!ex.records.find(r=>r.recordId===rid))
+      ex.records.push({recordId:rid, project, date, role:ins.role});
+    await saveInspectorRow(ex);
+  }
+
+  // Save defects
+  for (const d of defects) {
+    const def = {id:'d_'+Date.now()+'_'+Math.random().toString(36).slice(2,5), recordId:rid, project, date, code:d.code, content:d.content, inspectorNames:insNames, inspector_names:insNames};
+    DB.defects.push(def);
+    await saveDefectRow(def);
+  }
+
+  closeModal(); updateStats(); renderRecent();
+  toast(`✓ 已新增：${inspectors.length} 位委員・${defects.length} 項缺點`, 'ok');
+}
+
+// ─── AUTH ─────────────────────────────────────────────────────
+let CURRENT_USER = null;
+let IS_ADMIN = false;
+
+async function signInWithGoogle() {
+  const btn = document.getElementById('google-login-btn');
+  btn.disabled = true; btn.textContent = '登入中…';
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.href }
+  });
+  if (error) {
+    document.getElementById('auth-err').textContent = '登入失敗：' + error.message;
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A353" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>使用 Google 帳號登入`;
+  }
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+  CURRENT_USER = null; IS_ADMIN = false;
+  document.getElementById('auth-overlay').style.display = 'flex';
+  document.getElementById('main-app').style.display = 'none';
+  document.getElementById('user-pill').style.display = 'none';
+  document.getElementById('logout-btn').style.display = 'none';
+}
+
+async function handleAuthUser(user) {
+  CURRENT_USER = user;
+  // Check whitelist
+  const { data: allowed } = await sb.from('allowed_users').select('*').eq('email', user.email).single();
+  if (!allowed) {
+    await sb.auth.signOut();
+    document.getElementById('auth-err').textContent = `帳號 ${user.email} 尚未獲得授權，請聯絡管理員。`;
+    document.getElementById('google-login-btn').disabled = false;
+    document.getElementById('google-login-btn').innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A353" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>使用 Google 帳號登入`;
+    return;
+  }
+  IS_ADMIN = !!allowed.is_admin;
+
+  // Record login
+  await sb.from('login_logs').insert({ user_id: user.id, email: user.email, display_name: allowed.display_name || user.user_metadata?.full_name || user.email });
+
+  // Update UI
+  document.getElementById('auth-overlay').style.display = 'none';
+  document.getElementById('main-app').style.display = 'grid';
+  document.getElementById('user-pill').style.display = 'flex';
+  document.getElementById('logout-btn').style.display = 'inline-flex';
+  const name = allowed.display_name || user.user_metadata?.full_name || user.email;
+  document.getElementById('user-name').textContent = name;
+  document.getElementById('user-av').textContent = name.slice(0,1).toUpperCase();
+  if (IS_ADMIN) {
+    document.getElementById('admin-badge').style.display = 'inline';
+    document.getElementById('nav-admin').style.display = 'flex';
+  }
+  loadFromSupabase();
+}
+
+// ─── ADMIN PANEL ──────────────────────────────────────────────
+async function renderAdminPanel() {
+  await renderUsersTable();
+  await renderLoginLogs();
+}
+
+async function renderUsersTable() {
+  const { data } = await sb.from('allowed_users').select('*').order('created_at');
+  const el = document.getElementById('users-table');
+  if (!data?.length) { el.innerHTML = '<div class="empty">尚無授權帳號</div>'; return; }
+  el.innerHTML = `<table><thead><tr>
+    <th>Email</th><th>顯示名稱</th><th>身分</th><th>授權日期</th><th></th>
+  </tr></thead><tbody>
+  ${data.map(u=>`<tr>
+    <td style="font-size:12px">${u.email}</td>
+    <td style="font-size:12px">${u.display_name||'-'}</td>
+    <td>${u.is_admin?'<span class="tag tag-gold">管理員</span>':'<span class="tag tag-gray">一般</span>'}</td>
+    <td style="font-size:11px;color:var(--text3)">${u.created_at?.slice(0,10)||'-'}</td>
+    <td>${u.email===CURRENT_USER?.email?'<span style="font-size:11px;color:var(--text3)">（本人）</span>':`<button class="btn btn-red btn-sm" onclick="removeUser('${u.id}','${esc(u.email)}')">移除</button>`}</td>
+  </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function renderLoginLogs() {
+  const { data } = await sb.from('login_logs').select('*').order('logged_in_at', {ascending:false}).limit(50);
+  const el = document.getElementById('login-logs-table');
+  if (!data?.length) { el.innerHTML = '<div class="empty">尚無登入紀錄</div>'; return; }
+
+  // Group by email for stats
+  const stats = {};
+  data.forEach(log => {
+    if (!stats[log.email]) stats[log.email] = {count:0, last:log.logged_in_at, name:log.display_name};
+    stats[log.email].count++;
+  });
+
+  el.innerHTML = `
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:16px;flex-wrap:wrap">
+      ${Object.entries(stats).map(([email,[s]])=>'').join('')}
+    </div>
+    <table><thead><tr>
+      <th>帳號</th><th>登入時間</th><th>累計次數</th>
+    </tr></thead><tbody>
+    ${data.map(log=>{
+      const cnt = stats[log.email]?.count||1;
+      const dt = new Date(log.logged_in_at);
+      const fmt = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+      return `<tr>
+        <td>
+          <div style="font-size:13px;font-weight:500">${log.display_name||log.email}</div>
+          <div style="font-size:11px;color:var(--text3)">${log.email}</div>
+        </td>
+        <td style="font-size:12px;white-space:nowrap">${fmt}</td>
+        <td><span class="tag tag-gold" style="font-size:11px">${cnt} 次</span></td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>`;
+}
+
+function openAddUser() {
+  document.getElementById('modal-title').textContent = '新增授權帳號';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="frow"><label class="flabel">Google Email *</label><input class="finput" id="au-email" type="email" placeholder="name@gmail.com"></div>
+    <div class="frow"><label class="flabel">顯示名稱</label><input class="finput" id="au-name" placeholder="如：張先生"></div>
+    <div class="frow"><label class="flabel">帳號身分</label>
+      <select class="fselect" id="au-admin">
+        <option value="false">一般使用者</option>
+        <option value="true">管理員</option>
+      </select>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:-8px">新增後，該帳號使用 Google 登入即可存取系統。</div>
+  `;
+  document.getElementById('modal-foot').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+    <button class="btn btn-gold" onclick="saveNewUser()">新增</button>
+  `;
+  document.getElementById('modal').style.display = 'flex';
+}
+
+async function saveNewUser() {
+  const email = document.getElementById('au-email').value.trim().toLowerCase();
+  const name = document.getElementById('au-name').value.trim();
+  const isAdmin = document.getElementById('au-admin').value === 'true';
+  if (!email || !email.includes('@')) { toast('請填寫正確的 Email','err'); return; }
+  const { error } = await sb.from('allowed_users').upsert({email, display_name:name, is_admin:isAdmin}, {onConflict:'email'});
+  if (error) { toast('新增失敗：'+error.message,'err'); return; }
+  closeModal(); await renderUsersTable(); toast(`已授權 ${email}`, 'ok');
+}
+
+async function removeUser(id, email) {
+  if (!confirm(`確認移除帳號 ${email}？移除後該帳號無法再登入。`)) return;
+  await sb.from('allowed_users').delete().eq('id', id);
+  await renderUsersTable(); toast('已移除授權', 'info');
+}
+
 // ─── INIT ─────────────────────────────────────────────────────
+// Hide main app until authenticated
+document.getElementById('main-app').style.display = 'none';
+
+// Listen for auth state changes
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_IN' && session?.user) {
+    await handleAuthUser(session.user);
+  } else if (event === 'SIGNED_OUT') {
+    document.getElementById('auth-overlay').style.display = 'flex';
+    document.getElementById('main-app').style.display = 'none';
+  }
+});
+
+// Check existing session on load
+sb.auth.getSession().then(({ data: { session } }) => {
+  if (session?.user) {
+    handleAuthUser(session.user);
+  } else {
+    document.getElementById('auth-overlay').style.display = 'flex';
+  }
+});
+
 loadKeyUI();
-loadFromSupabase();
-// Keep Supabase alive - ping every 4 days to prevent auto-pause
 setInterval(() => sb.from('records').select('id').limit(1), 4 * 24 * 60 * 60 * 1000);
 </script>
 </body>
