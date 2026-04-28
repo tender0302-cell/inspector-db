@@ -823,13 +823,113 @@ function renderRecent() {
       <td style="white-space:nowrap">${r.date}</td>
       <td>${ins.slice(0,3).join('、')}${ins.length>3?'…':''}</td>
       <td><span class="tag tag-red">${defs}</span></td>
-      <td style="white-space:nowrap">
+      <td style="white-space:nowrap;display:flex;gap:4px">
+        <button class="btn btn-ghost btn-sm" onclick="editRecordInfo('${r.id}')">✏ 編輯</button>
         <button class="btn btn-ghost btn-sm" onclick="editRecord('${r.id}')">編輯委員</button>
-        <button class="btn btn-red btn-sm" style="margin-left:4px" onclick="deleteRecord('${r.id}')">刪除</button>
+        <button class="btn btn-red btn-sm" onclick="deleteRecord('${r.id}')">刪除</button>
       </td>
     </tr>`;
   }).join('')}
   </tbody></table></div>`;
+}
+
+function editRecordInfo(rid) {
+  const r = DB.records.find(x=>x.id===rid);
+  if (!r) return;
+  document.getElementById('modal-title').textContent = '編輯查核紀錄基本資料';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px">修改後將同步更新委員歷史與缺點紀錄中的對應欄位。</div>
+    <div class="frow">
+      <label class="flabel">標案名稱 *</label>
+      <textarea class="ftextarea" id="ri-project" style="min-height:55px">${r.project}</textarea>
+    </div>
+    <div class="frow">
+      <label class="flabel">查核日期 *</label>
+      <input class="finput" id="ri-date" type="date" value="${r.date}">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="frow">
+        <label class="flabel">地點</label>
+        <input class="finput" id="ri-location" value="${esc(r.location||'')}">
+      </div>
+      <div class="frow">
+        <label class="flabel">主辦機關</label>
+        <input class="finput" id="ri-authority" value="${esc(r.authority||'')}">
+      </div>
+    </div>
+    <div class="frow">
+      <label class="flabel">承包商</label>
+      <input class="finput" id="ri-contractor" value="${esc(r.contractor||'')}">
+    </div>
+    <div class="frow">
+      <label class="flabel">品質指標分數（選填）</label>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">環境</div><input class="finput" id="ri-env" type="number" step="0.01" value="${r.scores?.env||''}"></div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">安全</div><input class="finput" id="ri-safety" type="number" step="0.01" value="${r.scores?.safety||''}"></div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">強度</div><input class="finput" id="ri-strength" type="number" step="0.01" value="${r.scores?.strength||''}"></div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">美觀</div><input class="finput" id="ri-aes" type="number" step="0.01" value="${r.scores?.aesthetics||''}"></div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">功能</div><input class="finput" id="ri-func" type="number" step="0.01" value="${r.scores?.function||''}"></div>
+      </div>
+    </div>
+  `;
+  document.getElementById('modal-foot').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+    <button class="btn btn-gold" onclick="saveRecordInfo('${rid}')">儲存</button>
+  `;
+  document.getElementById('modal').style.display = 'flex';
+}
+
+async function saveRecordInfo(rid) {
+  const r = DB.records.find(x=>x.id===rid);
+  if (!r) return;
+  const newProject = document.getElementById('ri-project').value.trim();
+  const newDate = document.getElementById('ri-date').value;
+  if (!newProject) { toast('標案名稱不能為空','err'); return; }
+  if (!newDate) { toast('請選擇查核日期','err'); return; }
+
+  const oldProject = r.project;
+  const oldDate = r.date;
+
+  r.project = newProject;
+  r.date = newDate;
+  r.location = document.getElementById('ri-location').value.trim();
+  r.authority = document.getElementById('ri-authority').value.trim();
+  r.contractor = document.getElementById('ri-contractor').value.trim();
+  r.scores = {
+    env: parseFloat(document.getElementById('ri-env').value)||null,
+    safety: parseFloat(document.getElementById('ri-safety').value)||null,
+    strength: parseFloat(document.getElementById('ri-strength').value)||null,
+    aesthetics: parseFloat(document.getElementById('ri-aes').value)||null,
+    function: parseFloat(document.getElementById('ri-func').value)||null,
+  };
+
+  try {
+    await saveRecord(r);
+
+    // Sync project name and date in defects
+    const affectedDefs = DB.defects.filter(d=>d.recordId===rid);
+    for (const d of affectedDefs) {
+      d.project = newProject;
+      d.date = newDate;
+      await saveDefectRow(d);
+    }
+
+    // Sync in inspector records
+    const affectedIns = DB.inspectors.filter(i=>(i.records||[]).some(rec=>rec.recordId===rid));
+    for (const ins of affectedIns) {
+      ins.records = ins.records.map(rec =>
+        rec.recordId===rid ? {...rec, project:newProject, date:newDate} : rec
+      );
+      await saveInspectorRow(ins);
+    }
+
+    closeModal();
+    renderRecent();
+    updateStats();
+    toast('查核紀錄已更新，所有關聯資料同步完成', 'ok');
+  } catch(e) {
+    toast('儲存失敗：'+e.message, 'err');
+  }
 }
 
 async function deleteRecord(rid) {
